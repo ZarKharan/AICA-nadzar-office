@@ -1809,17 +1809,39 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
 
                 animate();
 
-                const onResize = () => {
-                    if (!container) return;
-                    camera.aspect = container.clientWidth / container.clientHeight;
+                // Resize the WebGL viewport whenever its flex parent changes size.
+                // Hiding the right-hand panel changes the canvas width without necessarily
+                // firing a window resize event, so a ResizeObserver is required here.
+                let resizeRaf = 0;
+                const resizeRenderer = () => {
+                    if (!container || !renderer || !camera) return;
+                    const width = Math.max(1, container.clientWidth);
+                    const height = Math.max(1, container.clientHeight);
+                    camera.aspect = width / height;
                     camera.updateProjectionMatrix();
-                    renderer.setSize(container.clientWidth, container.clientHeight);
+                    renderer.setSize(width, height, false);
+                    if (labelsRef.current) {
+                        labelsRef.current.style.width = `${width}px`;
+                        labelsRef.current.style.height = `${height}px`;
+                    }
+                };
+                const onResize = () => {
+                    cancelAnimationFrame(resizeRaf);
+                    resizeRaf = requestAnimationFrame(resizeRenderer);
                 };
                 window.addEventListener('resize', onResize);
+                const resizeObserver = typeof ResizeObserver !== 'undefined'
+                    ? new ResizeObserver(onResize)
+                    : null;
+                if (resizeObserver) resizeObserver.observe(container);
+                // Catch the initial layout and the CSS transition after panel collapse.
+                onResize();
 
                 return () => {
                     cancelAnimationFrame(frameId);
+                    cancelAnimationFrame(resizeRaf);
                     window.removeEventListener('resize', onResize);
+                    if (resizeObserver) resizeObserver.disconnect();
                     renderer.dispose();
                 };
             }, []);
