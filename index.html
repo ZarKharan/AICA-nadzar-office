@@ -2554,7 +2554,6 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                         🔄 Reset
                                     </button>
                                     <button onClick={() => setSideTab('Mission')} className="px-2.5 py-1.5 rounded-lg bg-indigo-600/80 hover:bg-indigo-500 text-white font-bold">🧭 Mission Control</button>
-                                    <button onClick={() => setRightPanelOpen(v => !v)} className="px-2.5 py-1.5 rounded-lg bg-sky-600/90 hover:bg-sky-500 text-white font-bold" title="Buka/tutup panel mengambang">{rightPanelOpen ? '✕ Tutup Panel' : '▣ Buka Panel'}</button>
                                     <button onClick={() => { setSimulationPaused(v => !v); logActivity(simulationPaused ? 'Simulasi kantor dilanjutkan.' : 'Simulasi kantor dijeda.'); }} className={`px-2.5 py-1.5 rounded-lg font-medium ${simulationPaused ? 'bg-amber-500 text-slate-950' : 'text-slate-300 hover:bg-slate-800'}`}>{simulationPaused ? '▶ Lanjut Simulasi' : '⏸ Pause'}</button>
                                     {/* Mobile Drawer Toggle Button */}
                                     <button
@@ -2972,6 +2971,16 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                 </div>
                             )}
                         </aside>
+
+                        {/* Slim edge tab: slide the right popup in/out without taking permanent screen space */}
+                        <button
+                            onClick={() => setRightPanelOpen(v => !v)}
+                            aria-label={rightPanelOpen ? 'Tutup panel kanan' : 'Buka panel kanan'}
+                            aria-expanded={rightPanelOpen}
+                            title={rightPanelOpen ? 'Tutup panel' : 'Buka panel'}
+                            style={{ right: rightPanelOpen ? 'min(460px, 100vw)' : '0px' }}
+                            className="absolute top-1/2 -translate-y-1/2 z-50 h-16 w-7 rounded-l-xl border border-r-0 border-slate-600 bg-slate-900/95 hover:bg-sky-700 text-sky-200 shadow-xl backdrop-blur transition-all duration-300 flex items-center justify-center text-2xl font-bold leading-none"
+                        >{rightPanelOpen ? '›' : '‹'}</button>
                     </div>
 
                     {/* ================================================================ */}
