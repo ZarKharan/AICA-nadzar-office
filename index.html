@@ -511,7 +511,7 @@
         async function callGeminiAgent(agent, userMessage, chatHistory, customApiKey) {
             const envKey = "";
             const activeKey = (customApiKey && customApiKey.trim()) ? customApiKey.trim() : envKey;
-            const modelName = (customApiKey && customApiKey.trim()) ? "gemini-2.5-flash" : "gemini-3-flash-preview";
+            const modelName = (customApiKey && customApiKey.trim()) ? "gemini-3.8-flash" : "gemini-3-flash-preview";
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${activeKey}`;
 
             const systemText = `${agent.systemPrompt}\n\nIdentitasmu:\n- Nama: ${agent.name}\n- Jabatan/Keahlian: ${agent.role} (${agent.category})\n- Ruangan Kantor: ${agent.room}\n- Ciri Khas Lucu: ${agent.funnyTrait}\n\nAturan Menjawab:\n1. Jawablah dengan gaya karaktermu yang khas, ramah, sedikit menyelipkan candaan sesuai ciri khasmu, namun tetap SANGAT DETAIL, AKURAT, dan SOLUTIF secara teknis/akademis untuk membantu Bos Nadzar.\n2. Gunakan bahasa Indonesia yang natural dan jelas.`;
@@ -559,7 +559,7 @@
         async function callGeminiForumRecap(topic, responderAgent, allAgents, customApiKey) {
             const envKey = "";
             const activeKey = (customApiKey && customApiKey.trim()) ? customApiKey.trim() : envKey;
-            const modelName = (customApiKey && customApiKey.trim()) ? "gemini-2.5-flash" : "gemini-3-flash-preview";
+            const modelName = (customApiKey && customApiKey.trim()) ? "gemini-3.8-flash" : "gemini-3-flash-preview";
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${activeKey}`;
 
             const rosterText = allAgents
@@ -2347,7 +2347,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                     </button>
                                 </div>
                                 <p className="text-slate-300 leading-relaxed">
-                                    Tempelkan <b>GEMINI_API_KEY</b> yang sudah kamu buat di <code className="text-sky-400">aistudio.google.com</code>. Aplikasi ini otomatis memakai model gratis hemat kuota <b>gemini-2.5-flash</b>.
+                                    Tempelkan <b>GEMINI_API_KEY</b> yang sudah kamu buat di <code className="text-sky-400">aistudio.google.com</code>. Aplikasi ini otomatis memakai model gratis hemat kuota <b>gemini-3.8-flash</b>.
                                 </p>
                                 <input
                                     type="password"
@@ -2418,7 +2418,7 @@ git push origin main`}</pre>
                                     <div className="p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-500/30 space-y-1">
                                         <div className="font-bold text-indigo-300">💡 Tips Hemat Kuota Gemini Gratis:</div>
                                         <p className="text-slate-300">
-                                            Aplikasi ini sudah diset menggunakan model <b><code>gemini-2.5-flash</code></b> yang punya batas kuota gratis harian besar di Google AI Studio. Animasi jalan-jalan 3D dihitung 100% oleh prosesor browser (Three.js), sehingga <b>tidak memakan kuota token AI</b> kecuali saat kamu benar-benar mengirim chat ke agen!
+                                            Aplikasi ini sudah diset menggunakan model <b><code>gemini-3.8-flash</code></b> yang punya batas kuota gratis harian besar di Google AI Studio. Animasi jalan-jalan 3D dihitung 100% oleh prosesor browser (Three.js), sehingga <b>tidak memakan kuota token AI</b> kecuali saat kamu benar-benar mengirim chat ke agen!
                                         </p>
                                     </div>
                                 </div>
