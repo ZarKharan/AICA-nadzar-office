@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AICA — Nadzar's 19-Agent AI Office (Semester 5 & Project Hub)</title>
+    <title>AICA — Autonomous AI Agency Operating System</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -488,6 +488,9 @@
             // Floor 1 & Outdoor Lush Park Spots
             { id: 'galon', floor: 1, x: -18.5, z: 11.2, ry: 0, posture: 'stand', label: 'Minum Air Galon Aqua di Pantry' },
             { id: 'coffee', floor: 1, x: -15.5, z: 11.2, ry: 0, posture: 'stand', label: 'Nyeduh Kopi Espresso di Pantry' },
+            { id: 'toilet_male', floor: 1, x: -19.0, z: -2.0, ry: 0, posture: 'stand', label: 'Toilet Pria' },
+            { id: 'toilet_female', floor: 1, x: -15.8, z: -2.0, ry: 0, posture: 'stand', label: 'Toilet Wanita' },
+            { id: 'smoking_room', floor: 1, x: 19.0, z: 11.0, ry: Math.PI, posture: 'stand', label: 'Smoking Room (khusus agent pria)' },
             { id: 'pingpong', floor: 1, x: 0.0, z: 9.5, ry: Math.PI, posture: 'stand', label: 'Main Ping-Pong di Game Zone' },
             { id: 'arcade', floor: 1, x: 3.2, z: 11.2, ry: 0, posture: 'stand', label: 'Main Dingdong Arcade Retro' },
             { id: 'gazebo', floor: 1, x: -14.0, z: 20.5, ry: 0, posture: 'sit', label: 'Santai Menghirup Udara Segar di Gazebo Taman' },
@@ -667,6 +670,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
         // 3. DESTINATION RESOLVER & CORRIDOR PATHING FOR 19 AGENTS
         // ============================================================================
         function getAgentTarget(agent, idx, allAgents, sleepMode, loungeMode, idleTick) {
+            if (agent.manualDestination) return { ...agent.manualDestination, bubble: agent.manualDestination.bubble || `🎯 ${agent.manualDestination.label || 'Menuju tujuan pilihan'}` };
             if (sleepMode && agent.state !== 'Working') {
                 const row = idx < 10 ? 0 : 1;
                 const col = idx < 10 ? idx : idx - 10;
@@ -790,6 +794,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
             onSelectAgent,
             idleTick,
             graphicsSettings,
+            simulationPaused,
             onFpsUpdate
         }) {
             const mountRef = useRef(null);
@@ -820,7 +825,8 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 idleTick,
                 darkMode,
                 graphicsSettings,
-                selectedAgentId
+                selectedAgentId,
+                simulationPaused
             });
             stateRef.current = {
                 agents,
@@ -830,7 +836,8 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 idleTick,
                 darkMode,
                 graphicsSettings,
-                selectedAgentId
+                selectedAgentId,
+                simulationPaused
             };
 
             // Procedural Male & Female Character Builder with Outfits & Accessories
@@ -947,6 +954,13 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 rightArm.castShadow = true;
                 rightArmPivot.add(rightArm);
                 bodyGroup.add(rightArmPivot);
+                if (agent.id === 'nadzar-ceo') {
+                    const racket = new THREE.Group();
+                    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,0.42,8), new THREE.MeshStandardMaterial({color:0x92400e})); handle.position.y=-0.34;
+                    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.22,0.035,8,18), new THREE.MeshStandardMaterial({color:0xfbbf24,metalness:0.45})); rim.position.y=-0.08;
+                    const net = new THREE.Mesh(new THREE.CircleGeometry(0.19,16), new THREE.MeshStandardMaterial({color:0xf8fafc,side:THREE.DoubleSide,transparent:true,opacity:0.55})); net.position.set(0,-0.08,0.015);
+                    racket.add(handle,rim,net); racket.rotation.x=-0.25; rightArmPivot.add(racket);
+                }
 
                 const leftLegPivot = new THREE.Group();
                 leftLegPivot.position.set(-0.10, 0, 0);
@@ -1302,6 +1316,31 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 pStudio.position.set(4.2, 1.4, 5.2);
                 floor1Group.add(pExec, pMeetR, pStudio);
 
+                // PANTRY + RESTROOMS + MEN-ONLY SMOKING ROOM
+                const amenityWall = new THREE.MeshStandardMaterial({ color: isNight ? 0x475569 : 0xcbd5e1, roughness: 0.8 });
+                const pantryFloor = new THREE.Mesh(new THREE.BoxGeometry(7.2,0.035,5.2), new THREE.MeshStandardMaterial({color:isNight?0x164e63:0xcffafe}));
+                pantryFloor.position.set(-16.8,0.145,10.8); floor1Group.add(pantryFloor);
+                const pantryCounter = new THREE.Mesh(new THREE.BoxGeometry(4.0,0.95,0.72), new THREE.MeshStandardMaterial({color:0x78350f}));
+                pantryCounter.position.set(-16.8,0.62,9.0); floor1Group.add(pantryCounter);
+                const coffeeMachine = new THREE.Mesh(new THREE.BoxGeometry(0.55,0.75,0.48), new THREE.MeshStandardMaterial({color:0x0f172a,metalness:0.35}));
+                coffeeMachine.position.set(-15.7,1.1,9.0); floor1Group.add(coffeeMachine);
+                const waterDispenser = new THREE.Mesh(new THREE.BoxGeometry(0.55,1.35,0.55), new THREE.MeshStandardMaterial({color:0x38bdf8,transparent:true,opacity:0.75}));
+                waterDispenser.position.set(-18.0,0.82,9.0); floor1Group.add(waterDispenser);
+                const restroomFloor = new THREE.Mesh(new THREE.BoxGeometry(7.0,0.035,5.2), new THREE.MeshStandardMaterial({color:isNight?0x334155:0xe2e8f0}));
+                restroomFloor.position.set(-17.0,0.145,-2.0); floor1Group.add(restroomFloor);
+                [[-19.0,-2.0],[-15.8,-2.0]].forEach(([x,z])=>{
+                    const partition = new THREE.Mesh(new THREE.BoxGeometry(2.8,2.3,0.14), amenityWall);
+                    partition.position.set(x,1.3,z-1.9); floor1Group.add(partition);
+                    const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.38,0.42,0.18,12), new THREE.MeshStandardMaterial({color:0xffffff,metalness:0.2}));
+                    basin.position.set(x,0.8,z+1.2); floor1Group.add(basin);
+                });
+                const smokeFloor = new THREE.Mesh(new THREE.BoxGeometry(6.2,0.035,5.2), new THREE.MeshStandardMaterial({color:isNight?0x292524:0xfde68a}));
+                smokeFloor.position.set(18.5,0.145,11.0); floor1Group.add(smokeFloor);
+                [[15.4,11],[21.6,11],[18.5,8.4],[18.5,13.6]].forEach(([x,z])=>{
+                    const wall = new THREE.Mesh(new THREE.BoxGeometry(x===18.5?6.2:0.14,2.35,z===11?0.14:5.2), amenityWall);
+                    wall.position.set(x,1.32,z); floor1Group.add(wall);
+                });
+
                 // ====================================================================
                 // WORKSTATION BUILDER (FIXED: AGENT SITS AT (0,0,0) FACING MONITOR AT +Z)
                 // ====================================================================
@@ -1394,6 +1433,12 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 slab2.position.set(-0.5, 0, 0);
                 slab2.receiveShadow = true;
                 floor2Group.add(slab2);
+                // Floor 2 departmental partitions and room dividers.
+                const f2Glass = new THREE.MeshStandardMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.38, roughness: 0.25 });
+                const f2Wood = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
+                const addF2Divider = (x,z,w,d,h=2.35,mat=f2Glass) => { const wall = new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); wall.position.set(x,h/2+0.16,z); wall.castShadow=true; floor2Group.add(wall); };
+                addF2Divider(-5.0,-7.0,0.16,13.0); addF2Divider(7.0,-7.0,0.16,13.0);
+                addF2Divider(-15.0,1.5,9.0,0.16,2.0,f2Wood); addF2Divider(1.0,1.5,11.0,0.16,2.0,f2Wood); addF2Divider(14.0,1.5,8.0,0.16,2.0,f2Wood);
 
                 // 19 Dormitory Beds
                 for (let b = 0; b < 19; b++) {
@@ -1504,7 +1549,8 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                     const rigs = rigsRef.current;
 
                     currAgents.forEach((ag, idx) => {
-                        const target = getAgentTarget(ag, idx, currAgents, sMode, lMode, iTick);
+                        if (stateRef.current.simulationPaused) return;
+                        let target = getAgentTarget(ag, idx, currAgents, sMode, lMode, iTick);
 
                         if (!rigs[ag.id]) {
                             const built = buildCharacterAvatar(ag);
@@ -1524,11 +1570,65 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                 targetKey: `${target.floor}:${target.x.toFixed(1)},${target.z.toFixed(1)}`,
                                 walkPhase: idx * 0.9,
                                 bubbleEl,
-                                lastHtmlKey: ''
+                                lastHtmlKey: '',
+                                autoTarget: null,
+                                nextAutoAt: elapsed + 5 + Math.random() * 12,
+                                holdUntil: 0,
+                                autoVisitCount: 0
                             };
                         }
 
                         const r = rigs[ag.id];
+
+                        // Autonomous office life: agents periodically choose a real destination,
+                        // walk there, stay for a while, then choose another destination.
+                        // Meetings and sleep mode keep their explicit commanded destinations.
+                        const canWander = !sMode && !ag.manualDestination && ag.state !== 'Meeting' && ag.state !== 'Collaborating';
+                        if (canWander && r.autoTarget) {
+                            const atGoal = r.waypoints.length === 0 &&
+                                r.currentFloor === r.autoTarget.floor &&
+                                Math.hypot(r.root.position.x - r.autoTarget.x, r.root.position.z - r.autoTarget.z) < 0.38;
+                            if (atGoal && !r.holdUntil) r.holdUntil = elapsed + 5 + Math.random() * 9;
+                            if (atGoal && elapsed >= r.holdUntil) {
+                                r.autoTarget = null;
+                                r.holdUntil = 0;
+                                r.nextAutoAt = elapsed + 7 + Math.random() * 15;
+                            }
+                        }
+
+                        if (canWander && !r.autoTarget && elapsed >= r.nextAutoAt) {
+                            // Working agents take short breaks around the first-floor office;
+                            // idle agents can explore both floors and the outdoor recreation area.
+                            const candidates = (ag.state === 'Idle' ? LOUNGE_AND_IDLE_SPOTS : LOUNGE_AND_IDLE_SPOTS.filter(spot => spot.floor === 1))
+                                .filter(spot => spot.id !== 'smoking_room' || ag.gender === 'male')
+                                .filter(spot => spot.id !== 'toilet_male' || ag.gender === 'male')
+                                .filter(spot => spot.id !== 'toilet_female' || ag.gender === 'female');
+                            const choices = candidates.filter(spot => {
+                                const sameAsCurrent = spot.floor === r.currentFloor &&
+                                    Math.hypot(spot.x - r.root.position.x, spot.z - r.root.position.z) < 3.2;
+                                const sameAsDesk = spot.floor === target.floor &&
+                                    Math.hypot(spot.x - target.x, spot.z - target.z) < 2.2;
+                                return !sameAsCurrent && !sameAsDesk;
+                            });
+                            const pool = choices.length ? choices : candidates;
+                            const pick = pool[Math.floor(Math.random() * pool.length)];
+                            if (pick) {
+                                const spread = ((idx % 3) - 1) * 0.48;
+                                r.autoTarget = {
+                                    floor: pick.floor,
+                                    x: pick.x + spread,
+                                    z: pick.z + ((idx % 2) ? 0.28 : -0.28),
+                                    ry: pick.ry,
+                                    posture: pick.posture,
+                                    roomLabel: pick.label,
+                                    bubble: `🎯 Tujuan: ${pick.label}`
+                                };
+                                r.autoVisitCount++;
+                                r.holdUntil = 0;
+                            }
+                        }
+                        if (canWander && r.autoTarget) target = r.autoTarget;
+
                         const nextKey = `${target.floor}:${target.x.toFixed(1)},${target.z.toFixed(1)}`;
                         if (r.targetKey !== nextKey) {
                             r.targetKey = nextKey;
@@ -1606,6 +1706,13 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                             }
                         }
 
+                        if (ag.id === 'nadzar-ceo' && ag.swingUntil && ag.swingUntil > Date.now()) { r.rightArmPivot.rotation.x = -2.35; r.rightArmPivot.rotation.z = -0.75; }
+                        if (ag.dizzyUntil && ag.dizzyUntil > Date.now()) {
+                            r.headGroup.rotation.z = Math.sin(elapsed * 15) * 0.32;
+                            r.root.rotation.y += Math.sin(elapsed * 11) * 0.06;
+                            r.bodyGroup.rotation.z = Math.sin(elapsed * 13) * 0.08;
+                        } else { r.headGroup.rotation.z *= 0.82; r.bodyGroup.rotation.z *= 0.82; }
+
                         // Project 2D Floating Name & Status Bubble (Respecting Graphics Label Mode)
                         if (r.bubbleEl) {
                             const labelMode = gfx.labelMode || 'all';
@@ -1653,6 +1760,24 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                             }
                         }
                     });
+
+                    // Lightweight character separation: agents gently keep personal space on the same floor.
+                    if (!stateRef.current.simulationPaused) for (let i = 0; i < currAgents.length; i++) {
+                        const ri = rigs[currAgents[i].id]; if (!ri || !ri.root.visible) continue;
+                        for (let j = i + 1; j < currAgents.length; j++) {
+                            const rj = rigs[currAgents[j].id]; if (!rj || !rj.root.visible || ri.currentFloor !== rj.currentFloor) continue;
+                            const dx = ri.root.position.x - rj.root.position.x;
+                            const dz = ri.root.position.z - rj.root.position.z;
+                            const d = Math.hypot(dx, dz);
+                            if (d > 0.001 && d < 0.72) {
+                                const push = (0.72 - d) * 0.035;
+                                ri.root.position.x += (dx / d) * push;
+                                ri.root.position.z += (dz / d) * push;
+                                rj.root.position.x -= (dx / d) * push;
+                                rj.root.position.z -= (dz / d) * push;
+                            }
+                        }
+                    }
 
                     renderer.render(scene, camera);
                 };
@@ -1812,12 +1937,27 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
             const [categoryFilter, setCategoryFilter] = useState('ALL');
             const [sideTab, setSideTab] = useState('Forum'); // 'Forum' | 'Chat' | 'Directory' | 'Rooms'
             const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
+            const [taskDraft, setTaskDraft] = useState('');
+            const [taskAssignee, setTaskAssignee] = useState('auto');
+            const [officeTasks, setOfficeTasks] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('aica_tasks_v1') || '[]'); } catch { return []; }
+            });
+            const [activityLogs, setActivityLogs] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('aica_activity_v1') || '[]'); } catch { return []; }
+            });
+            const [simulationPaused, setSimulationPaused] = useState(false);
+            const [laptopClock, setLaptopClock] = useState(new Date());
+            const [manualAgentId, setManualAgentId] = useState('nadzar-ceo');
+            const [manualPlace, setManualPlace] = useState('desk');
+            const [directorPanelOpen, setDirectorPanelOpen] = useState(true);
 
             // Individual Chat Histories
-            const [chatHistories, setChatHistories] = useState({
-                'sasa-sekre': [
-                    { sender: 'agent', text: 'Halo Bos Nadzar! Aku Sasa (Sekretaris Eksekutif). Semua 19 Agent sekarang sudah duduk menghadap layar monitor masing-masing di kantor baru yang jauh lebih luas dan asri! Mau diskusi bareng semua agent atau tanya matkul tertentu?' }
-                ]
+            const [chatHistories, setChatHistories] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('aica_agent_memory_v1');
+                    if (saved) return JSON.parse(saved);
+                } catch (err) { console.warn('Gagal memuat memori lokal AICA:', err); }
+                return { 'sasa-sekre': [{ sender: 'agent', text: 'Halo Bos Nadzar! Aku Sasa (Sekretaris Eksekutif). Semua 19 Agent siap bekerja di kantor AICA. Mau diskusi atau memberi tugas?' }] };
             });
             const [chatInput, setChatInput] = useState('');
             const [isSending, setIsSending] = useState(false);
@@ -1844,9 +1984,65 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
             const [showVercelModal, setShowVercelModal] = useState(false);
 
             useEffect(() => {
+                const clockTimer = setInterval(() => setLaptopClock(new Date()), 1000);
+                return () => clearInterval(clockTimer);
+            }, []);
+
+            useEffect(() => {
                 const t = setInterval(() => setIdleTick(c => c + 1), 28000);
                 return () => clearInterval(t);
             }, []);
+
+            useEffect(() => { localStorage.setItem('aica_tasks_v1', JSON.stringify(officeTasks)); }, [officeTasks]);
+            useEffect(() => { localStorage.setItem('aica_agent_memory_v1', JSON.stringify(chatHistories)); }, [chatHistories]);
+            useEffect(() => { localStorage.setItem('aica_activity_v1', JSON.stringify(activityLogs.slice(0, 80))); }, [activityLogs]);
+
+            const logActivity = (message, type = 'system') => {
+                setActivityLogs(prev => [{ id: `log-${Date.now()}-${Math.random().toString(36).slice(2,7)}`, message, type, time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) }, ...prev].slice(0, 80));
+            };
+
+            const assignOfficeTask = (e) => {
+                if (e) e.preventDefault();
+                const title = taskDraft.trim();
+                if (!title) return;
+                const keywords = title.toLowerCase();
+                const matched = agents.find(a => taskAssignee !== 'auto' ? a.id === taskAssignee :
+                    ((keywords.includes('iot') || keywords.includes('esp32') || keywords.includes('mqtt')) && /iot|embedded|aiot/i.test(`${a.role} ${a.category}`)) ||
+                    ((keywords.includes('desain') || keywords.includes('ui') || keywords.includes('website')) && /program|design|web|ui/i.test(`${a.role} ${a.category}`)) ||
+                    ((keywords.includes('laporan') || keywords.includes('praktikum')) && /praktikum|akademik|sekretaris/i.test(`${a.role} ${a.category}`))) || agents.find(a => a.id === 'bram-coo') || agents[0];
+                const task = { id: `task-${Date.now()}`, title, agentId: matched.id, agentName: matched.name, status: 'In Progress', createdAt: new Date().toISOString() };
+                setOfficeTasks(prev => [task, ...prev]);
+                setAgents(prev => prev.map(a => a.id === matched.id ? { ...a, state: 'Working', currentTask: title } : a));
+                setTaskDraft('');
+                logActivity(`${matched.name} menerima tugas: ${title}`, 'task');
+            };
+
+            const updateTaskStatus = (taskId, status) => {
+                setOfficeTasks(prev => prev.map(t => t.id === taskId ? { ...t, status } : t));
+                const task = officeTasks.find(t => t.id === taskId);
+                if (task) logActivity(`${task.agentName}: ${task.title} → ${status}`, 'task');
+                if (status === 'Completed' && task) setAgents(prev => prev.map(a => a.id === task.agentId ? { ...a, state: 'Idle', currentTask: 'Menunggu tugas berikutnya' } : a));
+            };
+
+            const startVoiceInput = () => {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (!SpeechRecognition) { logActivity('Voice input belum didukung browser ini. Coba Chrome desktop.', 'warning'); return; }
+                const recognition = new SpeechRecognition();
+                recognition.lang = 'id-ID'; recognition.interimResults = false; recognition.maxAlternatives = 1;
+                recognition.onresult = event => setChatInput(prev => `${prev}${prev ? ' ' : ''}${event.results[0][0].transcript}`);
+                recognition.onerror = event => logActivity(`Voice input: ${event.error}`, 'warning');
+                recognition.start();
+                logActivity('Mendengarkan perintah suara...', 'agent');
+            };
+
+            const speakSelectedAgent = () => {
+                const latest = (chatHistories[selectedAgentId] || []).filter(m => m.sender === 'agent').slice(-1)[0];
+                if (!latest || !('speechSynthesis' in window)) { logActivity('Text-to-speech tidak didukung browser ini.', 'warning'); return; }
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(latest.text.replace(/[*#`]/g, ''));
+                utterance.lang = 'id-ID'; utterance.rate = 1;
+                window.speechSynthesis.speak(utterance);
+            };
 
             const selectedAgent = useMemo(
                 () => agents.find(a => a.id === selectedAgentId) || agents[0],
@@ -1937,6 +2133,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 }));
 
                 setAgents(prev => prev.map(a => a.id === targetId ? { ...a, state: 'Thinking', currentTask: `Menjawab: "${text.slice(0, 28)}..."` } : a));
+                logActivity(`${selectedAgent.name} mulai menjawab pesan baru.`, 'agent');
 
                 try {
                     const reply = await callGeminiAgent(selectedAgent, text, currentHistory, customApiKey, preferredModel);
@@ -1959,12 +2156,35 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 }
             };
 
+            const moveAgentTo = (agentId, place) => {
+                const agent = agents.find(a => a.id === agentId); if (!agent) return;
+                let dest;
+                if (place === 'sleep') { const idx=agents.findIndex(a=>a.id===agentId); const row=idx<10?0:1; const col=idx<10?idx:idx-10; dest={floor:2,x:-16.2+col*3.5,z:row===0?-9.2:-4.2,ry:0,posture:'sleep',label:'Tidur di kamar lantai 2',bubble:'💤 Tidur'}; }
+                else if (place === 'desk') dest={floor:1,x:agent.deskPos.x,z:agent.deskPos.z,ry:agent.deskPos.ry||0,posture:'sit',label:'Kembali ke meja kerja',bubble:'💻 Kembali bekerja'};
+                else { const spot=LOUNGE_AND_IDLE_SPOTS.find(x=>x.id===place); if(!spot || (place==='smoking_room' && agent.gender!=='male') || (place==='toilet_male' && agent.gender!=='male') || (place==='toilet_female' && agent.gender!=='female')) return; dest={...spot,label:spot.label,bubble:`🚶 ${spot.label}`}; }
+                setAgents(prev=>prev.map(a=>a.id===agentId?{...a,manualDestination:dest,state:'Idle',currentTask:dest.label}:a));
+                setActiveFloor(dest.floor); logActivity(`${agent.name} diarahkan ke ${dest.label}.`,'agent');
+            };
+            const swingRacket = () => {
+                const victim=agents.find(a=>a.id===manualAgentId && a.id!=='nadzar-ceo'); if(!victim) return;
+                setAgents(prev=>prev.map(a=>a.id===victim.id?{...a,dizzyUntil:Date.now()+2600,currentTask:'Pusing setelah kena pukul raket CEO'}:a.id==='nadzar-ceo'?{...a,swingUntil:Date.now()+650}:a));
+                logActivity(`CEO mengayunkan raket ke arah ${victim.name}. ${victim.name} langsung pusing!`,'agent');
+                setTimeout(()=>setAgents(prev=>prev.map(a=>a.id===victim.id?{...a,dizzyUntil:0,currentTask:'Kembali beraktivitas'}:a)),2700);
+            };
+            const nudgeCEO = (dx,dz) => { const ceo=agents.find(a=>a.id==='nadzar-ceo'); if(!ceo)return; const cur=ceo.manualDestination||{floor:1,x:ceo.deskPos.x,z:ceo.deskPos.z}; const next={floor:cur.floor,x:Math.max(-21,Math.min(21,cur.x+dx)),z:Math.max(-13,Math.min(13,cur.z+dz)),ry:Math.atan2(dx,dz),posture:'stand',label:'CEO bergerak manual',bubble:'👑 CEO sedang bergerak'}; setAgents(prev=>prev.map(a=>a.id==='nadzar-ceo'?{...a,manualDestination:next,state:'Idle',currentTask:'Digerakkan langsung oleh CEO'}:a)); setActiveFloor(next.floor); };
+            const offerCoffee = () => { if(manualAgentId==='nadzar-ceo') return; moveAgentTo(manualAgentId,'coffee'); logActivity(`CEO menawarkan kopi kepada ${agents.find(a=>a.id===manualAgentId)?.name}.`,'agent'); };
+            const CEO_ACTION_DESTINATIONS = [
+                {value:'desk',label:'Meja kerja'},{value:'sleep',label:'Tidur / kamar lantai 2'},{value:'coffee',label:'Pantry / kopi'},{value:'galon',label:'Pantry / air minum'},
+                {value:'smoking_room',label:'Smoking room (pria)'},{value:'toilet_male',label:'Toilet pria'},{value:'toilet_female',label:'Toilet wanita'},
+                {value:'f2_cafebar',label:'Cafe lantai 2'},{value:'f2_theater',label:'Home theater lantai 2'},{value:'gazebo',label:'Gazebo taman'}
+            ];
+
             const triggerTeamAction = (mode) => {
                 if (mode === 'work_all') {
                     setSleepMode(false);
                     setLoungeMode(false);
                     setActiveFloor(1);
-                    setAgents(prev => prev.map(a => ({ ...a, state: 'Working' })));
+                    setAgents(prev => prev.map(a => ({ ...a, state: 'Working', manualDestination: null })));
                 } else if (mode === 'meeting_all') {
                     setSleepMode(false);
                     setLoungeMode(false);
@@ -2116,6 +2336,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                 onSelectAgent={handleSelectAgent}
                                 idleTick={idleTick}
                                 graphicsSettings={graphicsSettings}
+                                simulationPaused={simulationPaused}
                                 onFpsUpdate={setCurrentFps}
                             />
 
@@ -2135,6 +2356,39 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                         <span>{rm.name}</span>
                                     </button>
                                 ))}
+                            </div>
+
+                            <div className="absolute top-3 left-3 z-20 pointer-events-auto flex flex-col gap-2 max-w-[min(94%,390px)]">
+                                <div className="rounded-xl border border-slate-700 bg-slate-950/90 backdrop-blur px-3 py-2 shadow-xl text-[11px]">
+                                    <div className="text-slate-400">🕒 Waktu laptop (real-time)</div>
+                                    <div className="font-mono text-lg font-bold text-emerald-300">{laptopClock.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</div>
+                                    <div className="text-slate-500">{laptopClock.toLocaleDateString('id-ID',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}</div>
+                                </div>
+                                <div className="rounded-xl border border-slate-700 bg-slate-950/90 backdrop-blur shadow-xl text-[11px] overflow-hidden">
+                                    <div className="flex items-center justify-between gap-3 px-3 py-2">
+                                        <div className="font-bold text-sky-300">🎮 Director Mode</div>
+                                        <button
+                                            onClick={() => setDirectorPanelOpen(v => !v)}
+                                            aria-expanded={directorPanelOpen}
+                                            title={directorPanelOpen ? 'Sembunyikan Director Mode' : 'Tampilkan Director Mode'}
+                                            className="rounded-lg border border-slate-600 bg-slate-800 hover:bg-slate-700 px-2.5 py-1 text-slate-100 font-semibold"
+                                        >{directorPanelOpen ? '− Hide' : '+ Show'}</button>
+                                    </div>
+                                    {directorPanelOpen && <div className="px-2.5 pb-2.5 space-y-2">
+                                    <select value={manualAgentId} onChange={e=>setManualAgentId(e.target.value)} className="w-full rounded-lg bg-slate-800 border border-slate-700 px-2 py-1.5 text-white">{agents.map(a=><option key={a.id} value={a.id}>{a.name} — {a.role}</option>)}</select>
+                                    <div className="flex gap-1"><select value={manualPlace} onChange={e=>setManualPlace(e.target.value)} className="min-w-0 flex-1 rounded-lg bg-slate-800 border border-slate-700 px-2 py-1.5 text-white">{CEO_ACTION_DESTINATIONS.map(d=><option key={d.value} value={d.value}>{d.label}</option>)}</select><button onClick={()=>moveAgentTo(manualAgentId,manualPlace)} className="rounded-lg bg-sky-600 hover:bg-sky-500 px-3 py-1.5 font-bold text-white">Go</button></div>
+                                    <div className="flex gap-1"><button onClick={()=>moveAgentTo(manualAgentId,'desk')} className="flex-1 rounded-lg bg-slate-800 hover:bg-slate-700 px-2 py-1.5">💻 Kerja</button><button onClick={()=>moveAgentTo(manualAgentId,'sleep')} className="flex-1 rounded-lg bg-indigo-700 hover:bg-indigo-600 px-2 py-1.5">💤 Tidur</button><button onClick={offerCoffee} disabled={manualAgentId==='nadzar-ceo'} className="flex-1 rounded-lg bg-amber-700 hover:bg-amber-600 disabled:opacity-40 px-2 py-1.5">☕ Kopi</button><button onClick={swingRacket} disabled={manualAgentId==='nadzar-ceo'} className="flex-1 rounded-lg bg-rose-700 hover:bg-rose-600 disabled:opacity-40 px-2 py-1.5">🏓 Pukul</button></div>
+                                    {manualAgentId==='nadzar-ceo' && <div className="space-y-1">
+                                        <div className="text-[10px] font-semibold text-amber-300">👑 Kontrol gerak CEO</div>
+                                        <div className="grid grid-cols-3 gap-1 max-w-[150px] mx-auto">
+                                            <span></span><button onClick={()=>nudgeCEO(0,-1.8)} className="rounded bg-slate-700 py-1">↑</button><span></span>
+                                            <button onClick={()=>nudgeCEO(-1.8,0)} className="rounded bg-slate-700 py-1">←</button><button onClick={()=>nudgeCEO(0,1.8)} className="rounded bg-slate-700 py-1">↓</button><button onClick={()=>nudgeCEO(1.8,0)} className="rounded bg-slate-700 py-1">→</button>
+                                        </div>
+                                        <div className="text-[9px] text-slate-500">Gunakan tombol arah untuk menggerakkan CEO bertahap.</div>
+                                    </div>}
+                                    <div className="text-[9px] text-slate-500">Waktu mengikuti jam laptop. Perintah tujuan mengunci tujuan agent sampai diperintah lagi.</div>
+                                    </div>}
+                                </div>
                             </div>
 
                             {/* BOTTOM FLOATING CAMERA, FLOOR & MOBILE DRAWER CONTROLS */}
@@ -2174,6 +2428,8 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                     >
                                         🔄 Reset
                                     </button>
+                                    <button onClick={() => setSideTab('Mission')} className="px-2.5 py-1.5 rounded-lg bg-indigo-600/80 hover:bg-indigo-500 text-white font-bold">🧭 Mission Control</button>
+                                    <button onClick={() => { setSimulationPaused(v => !v); logActivity(simulationPaused ? 'Simulasi kantor dilanjutkan.' : 'Simulasi kantor dijeda.'); }} className={`px-2.5 py-1.5 rounded-lg font-medium ${simulationPaused ? 'bg-amber-500 text-slate-950' : 'text-slate-300 hover:bg-slate-800'}`}>{simulationPaused ? '▶ Lanjut Simulasi' : '⏸ Pause'}</button>
                                     {/* Mobile Drawer Toggle Button */}
                                     <button
                                         onClick={() => setMobilePanelOpen(o => !o)}
@@ -2195,6 +2451,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                             <div className="p-2 border-b border-slate-800 flex items-center justify-between gap-1 bg-slate-950/70 overflow-x-auto">
                                 <div className="flex gap-1">
                                     {[
+                                        { id: 'Mission', label: '🧭 Mission Control' },
                                         { id: 'Forum', label: '🏛️ Diskusi 19 Agent (Sekre)' },
                                         { id: 'Chat', label: '💬 Chat Personal' },
                                         { id: 'Directory', label: '👥 19 Agent' },
@@ -2218,6 +2475,55 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                     <Icon name="chevron-down" className="w-4 h-4" />
                                 </button>
                             </div>
+
+                            {/* MISSION CONTROL: task dispatch, agent monitor, logs and voice */}
+                            {sideTab === 'Mission' && (
+                                <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
+                                    <div className="rounded-2xl p-3 bg-gradient-to-br from-indigo-950 via-slate-900 to-sky-950 border border-indigo-500/30">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div><div className="text-indigo-300 font-bold text-sm">AICA Mission Control</div><p className="text-slate-400 mt-1">Pusat kendali tugas dan aktivitas 19 AI agent.</p></div>
+                                            <span className="px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-300">● Office Online</span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-2 mt-3">
+                                            <div className="bg-slate-950/70 rounded-xl p-2"><div className="text-slate-500">Total Agent</div><div className="text-xl font-bold">{agents.length}</div></div>
+                                            <div className="bg-slate-950/70 rounded-xl p-2"><div className="text-slate-500">Tugas Aktif</div><div className="text-xl font-bold text-sky-300">{officeTasks.filter(t => t.status !== 'Completed').length}</div></div>
+                                            <div className="bg-slate-950/70 rounded-xl p-2"><div className="text-slate-500">Selesai</div><div className="text-xl font-bold text-emerald-300">{officeTasks.filter(t => t.status === 'Completed').length}</div></div>
+                                        </div>
+                                    </div>
+                                    <form onSubmit={assignOfficeTask} className="rounded-2xl border border-slate-700 bg-slate-800/70 p-3 space-y-2">
+                                        <div className="font-bold text-slate-100">＋ Assign tugas baru</div>
+                                        <textarea value={taskDraft} onChange={e => setTaskDraft(e.target.value)} placeholder="Contoh: Buat dashboard monitoring IoT ESP32 dan MQTT..." rows="3" className="w-full resize-y rounded-xl bg-slate-950 border border-slate-700 p-2.5 text-xs outline-none focus:border-sky-500" />
+                                        <div className="flex gap-2">
+                                            <select value={taskAssignee} onChange={e => setTaskAssignee(e.target.value)} className="min-w-0 flex-1 rounded-lg bg-slate-950 border border-slate-700 p-2 text-xs"><option value="auto">🤖 Auto pilih agent</option>{agents.map(a => <option key={a.id} value={a.id}>{a.name} — {a.role}</option>)}</select>
+                                            <button type="submit" disabled={!taskDraft.trim()} className="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-40 font-bold text-white">Assign</button>
+                                        </div>
+                                        <p className="text-[10px] text-slate-500">Auto-assign memakai pencocokan kata kunci dan spesialisasi agent. Eksekusi AI dimulai saat kamu membuka chat agent dan memberi instruksi.</p>
+                                    </form>
+                                    <div className="rounded-2xl border border-slate-700 bg-slate-900 p-3 space-y-2">
+                                        <div className="flex justify-between items-center"><h4 className="font-bold">📌 Task Board</h4><span className="text-slate-500">{officeTasks.length} tugas</span></div>
+                                        {officeTasks.length === 0 ? <p className="text-slate-500 py-3 text-center">Belum ada tugas. Assign tugas pertamamu di atas.</p> : officeTasks.map(task => (
+                                            <div key={task.id} className="rounded-xl bg-slate-800/80 border border-slate-700 p-2.5 space-y-2">
+                                                <div className="flex justify-between gap-2"><div className="font-semibold text-slate-100">{task.title}</div><span className={`shrink-0 text-[9px] rounded-full px-2 py-0.5 ${task.status === 'Completed' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>{task.status}</span></div>
+                                                <div className="flex items-center justify-between gap-2"><button onClick={() => handleSelectAgent(task.agentId)} className="text-sky-300 hover:underline">👤 {task.agentName}</button><div className="flex gap-1"><button onClick={() => updateTaskStatus(task.id, 'In Progress')} className="px-2 py-1 rounded bg-slate-700 text-slate-200">Proses</button><button onClick={() => updateTaskStatus(task.id, 'Completed')} className="px-2 py-1 rounded bg-emerald-700 text-white">Selesai</button></div></div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-700 bg-slate-900 p-3 space-y-2">
+                                        <div className="flex items-center justify-between"><h4 className="font-bold">👥 Live Agent Monitor</h4><button onClick={() => { setSideTab('Directory'); }} className="text-sky-300">Lihat semua</button></div>
+                                        <div className="grid grid-cols-2 gap-2">{agents.map(a => <button key={a.id} onClick={() => handleSelectAgent(a.id)} className="text-left rounded-xl bg-slate-800 p-2 hover:bg-slate-700"><div className="font-semibold truncate">{a.name}</div><div className="text-[10px] text-slate-400 truncate">{a.currentTask || a.role}</div><div className={`text-[9px] mt-1 ${a.state === 'Thinking' ? 'text-amber-300' : a.state === 'Meeting' ? 'text-purple-300' : a.state === 'Working' ? 'text-emerald-300' : 'text-slate-400'}`}>● {a.state}</div></button>)}</div>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-700 bg-slate-900 p-3 space-y-2">
+                                        <h4 className="font-bold">🗓️ Ritme Kerja Kantor</h4>
+                                        {[['08.00','Daily check-in & prioritas'],['09.00','Deep work / pengerjaan tugas'],['10.30','Kolaborasi lintas-agent'],['12.00','Istirahat & pantry'],['13.00','Lanjutan project dan review'],['15.30','QA, dokumentasi & laporan'],['17.00','Rekap dan penutupan hari']].map((slot,i) => <div key={slot[0]} className="flex items-center gap-3"><span className="w-12 text-sky-300 font-mono">{slot[0]}</span><div className="w-2 h-2 rounded-full bg-indigo-400"></div><span className="text-slate-300">{slot[1]}</span></div>)}
+                                        <p className="text-[10px] text-slate-500">Jadwal ini merupakan simulasi rutinitas kantor, belum menjadi scheduler otomatis berbasis waktu nyata.</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-700 bg-slate-900 p-3 space-y-2">
+                                        <div className="flex items-center justify-between"><h4 className="font-bold">🕘 Activity Timeline</h4><button onClick={() => { setActivityLogs([]); localStorage.removeItem('aica_activity_v1'); }} className="text-slate-500 hover:text-rose-300">Bersihkan</button></div>
+                                        {activityLogs.length === 0 ? <p className="text-slate-500">Aktivitas akan muncul di sini.</p> : activityLogs.slice(0, 18).map(log => <div key={log.id} className="flex gap-2 border-b border-slate-800 pb-1.5"><span className="text-slate-500 font-mono">{log.time}</span><span className="text-slate-300">{log.message}</span></div>)}
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-700 bg-slate-900 p-3 flex items-center justify-between gap-2"><div><div className="font-bold">🔊 Voice output</div><p className="text-slate-500">Bacakan jawaban agent yang terakhir.</p></div><button onClick={speakSelectedAgent} className="px-3 py-2 rounded-lg bg-indigo-600 text-white font-bold">Bacakan</button></div>
+                                </div>
+                            )}
 
                             {/* ============================================================ */}
                             {/* TAB 0: 19-AGENT FORUM DISCUSSION & SECRETARY RECAP           */}
@@ -2434,6 +2740,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                         </div>
 
                                         <form onSubmit={e => handleSendMessage(e)} className="flex gap-2">
+                                            <button type="button" onClick={startVoiceInput} title="Input suara Bahasa Indonesia" className="px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sky-300">🎙️</button>
                                             <input
                                                 type="text"
                                                 value={chatInput}
