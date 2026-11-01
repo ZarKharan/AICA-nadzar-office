@@ -892,13 +892,14 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 camera.position.set(0, 34, 42);
                 cameraRef.current = camera;
 
-                const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-                renderer.setSize(container.clientWidth, container.clientHeight);
-                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
-                renderer.shadowMap.enabled = true;
-                renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-                container.innerHTML = '';
-                container.appendChild(renderer.domElement);
+                const isMobile = window.innerWidth < 768;
+                const renderer = new THREE.WebGLRenderer({ 
+                antialias: !isMobile, // Matikan antialias di HP biar enteng
+                powerPreference: 'high-performance'
+                });
+                renderer.setSize(mount.clientWidth, mount.clientHeight);
+                renderer.setPixelRatio(1); // Kunci di angka 1! Ini mengurangi beban GPU hingga 50-75%
+                renderer.shadowMap.enabled = false; // Matikan kalkulasi bayangan real-time yang bikin berat
 
                 const controls = new THREE.OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
@@ -1357,12 +1358,22 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 // ====================================================================
                 // REAL-TIME ANIMATION LOOP (CLOUDS, STARS & 19 AGENTS)
                 // ====================================================================
-                const clock = new THREE.Clock();
+               const clock = new THREE.Clock();
                 let frameId;
+                let timeAccumulator = 0;
+                const targetFrameRate = 1 / 30; // Kunci stabil di 30 FPS agar GPU adem & bebas lag
 
                 const animate = () => {
                     frameId = requestAnimationFrame(animate);
-                    const dt = Math.min(clock.getDelta(), 0.1);
+                    
+                    const rawDelta = clock.getDelta();
+                    timeAccumulator += rawDelta;
+
+                    // Lewati proses render jika belum mencapai interval 30 FPS
+                    if (timeAccumulator < targetFrameRate) return;
+
+                    const dt = Math.min(timeAccumulator, 0.1);
+                    timeAccumulator = 0; // Reset akumulator setelah frame dieksekusi
                     const elapsed = clock.getElapsedTime();
 
                     controls.update();
