@@ -506,14 +506,109 @@
         ];
 
         // ============================================================================
-        // 2. GEMINI API HELPER (INDIVIDUAL CHAT + 19-AGENT FORUM SECRETARY RECAP)
+        // 1B. IN-GAME GRAPHICS PRESETS & DEFAULT ANTI-LAG CONFIGURATION
         // ============================================================================
-        async function callGeminiAgent(agent, userMessage, chatHistory, customApiKey) {
+        const GRAPHICS_PRESETS = {
+            potato: {
+                preset: 'potato',
+                label: '⚡ Potato / Ultra Low (Anti-Lag HP & Laptop Kentang)',
+                resolutionScale: 0.75,
+                targetFPS: 30,
+                shadows: false,
+                foliageDensity: 'minimal', // 8 trees
+                skyEffects: false,
+                labelMode: 'selected' // Only show floating DOM bubble for selected agent
+            },
+            balanced: {
+                preset: 'balanced',
+                label: '⚖️ Balanced / Medium (Default - Cepat & Ringan)',
+                resolutionScale: 1.0,
+                targetFPS: 30,
+                shadows: false,
+                foliageDensity: 'medium', // 20 trees
+                skyEffects: true,
+                labelMode: 'all'
+            },
+            high: {
+                preset: 'high',
+                label: '✨ High / HD (Visual Tajam 60 FPS)',
+                resolutionScale: 1.25,
+                targetFPS: 60,
+                shadows: true,
+                foliageDensity: 'full', // 45 trees
+                skyEffects: true,
+                labelMode: 'all'
+            },
+            ultra: {
+                preset: 'ultra',
+                label: '🔥 Ultra / RTX Mode (Maksimal & Soft Shadows)',
+                resolutionScale: 1.75,
+                targetFPS: 60,
+                shadows: true,
+                foliageDensity: 'full',
+                skyEffects: true,
+                labelMode: 'all'
+            }
+        };
+
+        const DEFAULT_GRAPHICS = GRAPHICS_PRESETS.balanced;
+
+        // ============================================================================
+        // 2. GEMINI API HELPER (GEMINI-3.8-FLASH DEFAULT + SMART MULTI-MODEL FALLBACK)
+        // ============================================================================
+        const FALLBACK_GEMINI_MODELS = [
+            'gemini-3.8-flash',
+            'gemini-3-flash-preview',
+            'gemini-2.0-flash',
+            'gemini-1.5-flash'
+        ];
+
+        async function fetchGeminiWithFallback(contents, systemText, customApiKey, preferredModel) {
             const envKey = "";
             const activeKey = (customApiKey && customApiKey.trim()) ? customApiKey.trim() : envKey;
-            const modelName = (customApiKey && customApiKey.trim()) ? "gemini-3.8-flash" : "gemini-3-flash-preview";
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${activeKey}`;
+            const primary = (preferredModel && preferredModel.trim()) ? preferredModel.trim() : 'gemini-3.8-flash';
 
+            const candidateModels = [
+                primary,
+                ...FALLBACK_GEMINI_MODELS.filter(m => m !== primary)
+            ];
+
+            let lastError = null;
+
+            for (let mIdx = 0; mIdx < candidateModels.length; mIdx++) {
+                const modelName = candidateModels[mIdx];
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${activeKey}`;
+
+                try {
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents,
+                            systemInstruction: { parts: [{ text: systemText }] }
+                        })
+                    });
+
+                    if (!res.ok) {
+                        const errData = await res.json().catch(() => ({}));
+                        const errMsg = errData?.error?.message || `HTTP ${res.status}`;
+                        lastError = new Error(errMsg);
+                        // Automatically try the next model in FALLBACK_GEMINI_MODELS
+                        continue;
+                    }
+
+                    const data = await res.json();
+                    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (reply) return reply;
+                } catch (err) {
+                    lastError = err;
+                }
+            }
+
+            throw lastError || new Error('Gagal menghubungi server Gemini API.');
+        }
+
+        async function callGeminiAgent(agent, userMessage, chatHistory, customApiKey, preferredModel) {
             const systemText = `${agent.systemPrompt}\n\nIdentitasmu:\n- Nama: ${agent.name}\n- Jabatan/Keahlian: ${agent.role} (${agent.category})\n- Ruangan Kantor: ${agent.room}\n- Ciri Khas Lucu: ${agent.funnyTrait}\n\nAturan Menjawab:\n1. Jawablah dengan gaya karaktermu yang khas, ramah, sedikit menyelipkan candaan sesuai ciri khasmu, namun tetap SANGAT DETAIL, AKURAT, dan SOLUTIF secara teknis/akademis untuk membantu Bos Nadzar.\n2. Gunakan bahasa Indonesia yang natural dan jelas.`;
 
             const contents = [];
@@ -528,40 +623,11 @@
                 parts: [{ text: userMessage }]
             });
 
-            let delay = 1000;
-            for (let attempt = 0; attempt < 3; attempt++) {
-                try {
-                    const res = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents,
-                            systemInstruction: { parts: [{ text: systemText }] }
-                        })
-                    });
-                    if (!res.ok) {
-                        const errData = await res.json().catch(() => ({}));
-                        throw new Error(errData?.error?.message || `HTTP ${res.status}`);
-                    }
-                    const data = await res.json();
-                    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (reply) return reply;
-                    throw new Error('Respons kosong dari Gemini.');
-                } catch (err) {
-                    if (attempt === 2) throw err;
-                    await new Promise(r => setTimeout(r, delay));
-                    delay *= 2;
-                }
-            }
+            return await fetchGeminiWithFallback(contents, systemText, customApiKey, preferredModel);
         }
 
         // Multi-Agent Townhall Discussion + Secretary / Chosen Responder Executive Recap
-        async function callGeminiForumRecap(topic, responderAgent, allAgents, customApiKey) {
-            const envKey = "";
-            const activeKey = (customApiKey && customApiKey.trim()) ? customApiKey.trim() : envKey;
-            const modelName = (customApiKey && customApiKey.trim()) ? "gemini-3.8-flash" : "gemini-3-flash-preview";
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${activeKey}`;
-
+        async function callGeminiForumRecap(topic, responderAgent, allAgents, customApiKey, preferredModel) {
             const rosterText = allAgents
                 .map(a => `- #${a.num} ${a.name} (${a.role} - ${a.category})`)
                 .join('\n');
@@ -578,19 +644,10 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
 3. Tampilkan bagian **"📋 Rekapitulasi Eksekutif & Rencana Tindak Lanjut (Action Plan)"** yang menyatukan seluruh jawaban agent menjadi kesimpulan utuh, terstruktur, dan siap dijalankan oleh CEO Nadzar.`;
 
             try {
-                const res = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ role: 'user', parts: [{ text: `Topik Diskusi dari CEO Nadzar: "${topic}"\n\nBerikan rangkuman diskusi lengkap dari para agent dan rekap eksekutifnya!` }] }],
-                        systemInstruction: { parts: [{ text: systemPrompt }] }
-                    })
-                });
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
-                const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (text) return text;
-                throw new Error('Empty response');
+                const contents = [
+                    { role: 'user', parts: [{ text: `Topik Diskusi dari CEO Nadzar: "${topic}"\n\nBerikan rangkuman diskusi lengkap dari para agent dan rekap eksekutifnya!` }] }
+                ];
+                return await fetchGeminiWithFallback(contents, systemPrompt, customApiKey, preferredModel);
             } catch (err) {
                 // Smart structured fallback if offline or API key not set yet
                 return `📋 **LAPORAN REKAPITULASI FORUM 19 AGENT — Disusun oleh ${responderAgent.name}**\n*(Mode Pratinjau Instan — Hubungkan Gemini API Key di kanan atas untuk analisis AI generatif penuh)*\n\n**Topik Diskusi CEO Nadzar:**\n"${topic}"\n\n---\n### 📌 1. Masukan Spesifik Tiap Divisi Agent:\n- **#5 Teguh (Sistem Tenaga S1TE-08-A) & #16 Doni (Project Kelistrikan):** Menyiapkan skema suplai daya utama, perhitungan beban, proteksi MCB/Kontaktor, serta efisiensi daya.\n- **#3 Bagas (Elektronika 2) & #6 Aris (Sistem Tertanam):** Merancang pengondisi sinyal sensor (Op-Amp filter aktif) dan pemrograman mikrokontroler STM32/ESP32 berbasis interrupt.\n- **#9 Alya (Kecerdasan Buatan), #12 Dina (Sistem IoT) & #15 Kevin (Project AIoT):** Mengintegrasikan model inferensi AI dengan pengiriman telemetri MQTT real-time ke dashboard cloud.\n- **#4 Joko (Otomatisasi Industri) & #11 Fajar (Sinyal Diskret):** Memastikan kendali aktuator stabil dan sinyal sensor bersih menggunakan filter digital FIR/IIR.\n- **#7 Rani (Praktikum) & #13 Tiara (Koordinator Smt 5):** Menyusun dokumentasi pengujian tabel data lab agar langsung bisa dipakai untuk laporan praktikum dan tugas kuliah.\n- **#8 Pak Riko (EkoBisnis):** Menghitung RAB, estimasi HPP alat, analisis BEP, dan kelayakan NPV apabila projek dikomersialkan.\n- **#17 Maya (Ahli Film) & #18 Dimas (Organisasi):** Menyiapkan storyboard video dokumenter presentasi projek serta rundown pameran/demo.\n\n---\n### ✅ 2. Kesimpulan & Rencana Eksekusi (${responderAgent.name}):\n1. **Tahap 1 (Desain & Komponen):** Aris, Bagas, dan Doni memfinalisasi skematik rangkaian & daftar komponen.\n2. **Tahap 2 (Integrasi Kode & AIoT):** Kevin, Alya, dan Dina menyambungkan firmware ESP32 ke broker MQTT & model AI.\n3. **Tahap 3 (Laporan, Biaya & Video Demo):** Rani, Pak Riko, dan Maya menyelesaikan laporan akhir, perhitungan kelayakan bisnis, dan video presentasi.`;
@@ -720,15 +777,20 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
             panMode,
             resetTrigger,
             focusAgentId,
+            selectedAgentId,
             onSelectAgent,
-            idleTick
+            idleTick,
+            graphicsSettings,
+            onFpsUpdate
         }) {
             const mountRef = useRef(null);
             const labelsRef = useRef(null);
             const sceneRef = useRef(null);
+            const rendererRef = useRef(null);
             const cameraRef = useRef(null);
             const controlsRef = useRef(null);
             const floor2GroupRef = useRef(null);
+            const foliageMeshesRef = useRef([]);
             const skyRefs = useRef({
                 hemi: null,
                 dirLight: null,
@@ -741,8 +803,26 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
             });
             const rigsRef = useRef({});
 
-            const stateRef = useRef({ agents, sleepMode, loungeMode, activeFloor, idleTick, darkMode });
-            stateRef.current = { agents, sleepMode, loungeMode, activeFloor, idleTick, darkMode };
+            const stateRef = useRef({
+                agents,
+                sleepMode,
+                loungeMode,
+                activeFloor,
+                idleTick,
+                darkMode,
+                graphicsSettings,
+                selectedAgentId
+            });
+            stateRef.current = {
+                agents,
+                sleepMode,
+                loungeMode,
+                activeFloor,
+                idleTick,
+                darkMode,
+                graphicsSettings,
+                selectedAgentId
+            };
 
             // Procedural Male & Female Character Builder with Outfits & Accessories
             const buildCharacterAvatar = (agent) => {
@@ -892,14 +972,20 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 camera.position.set(0, 34, 42);
                 cameraRef.current = camera;
 
+                const initGfx = stateRef.current.graphicsSettings || DEFAULT_GRAPHICS;
                 const isMobile = window.innerWidth < 768;
-                const renderer = new THREE.WebGLRenderer({ 
-                antialias: !isMobile, // Matikan antialias di HP biar enteng
-                powerPreference: 'high-performance'
+                const renderer = new THREE.WebGLRenderer({
+                    antialias: !isMobile && initGfx.preset !== 'potato',
+                    powerPreference: 'high-performance',
+                    precision: 'mediump'
                 });
-                renderer.setSize(mount.clientWidth, mount.clientHeight);
-                renderer.setPixelRatio(1); // Kunci di angka 1! Ini mengurangi beban GPU hingga 50-75%
-                renderer.shadowMap.enabled = false; // Matikan kalkulasi bayangan real-time yang bikin berat
+                renderer.setSize(container.clientWidth, container.clientHeight);
+                renderer.setPixelRatio(initGfx.resolutionScale || 1.0);
+                renderer.shadowMap.enabled = Boolean(initGfx.shadows);
+                renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                rendererRef.current = renderer;
+                container.innerHTML = '';
+                container.appendChild(renderer.domElement);
 
                 const controls = new THREE.OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
@@ -921,9 +1007,9 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
 
                 const dirLight = new THREE.DirectionalLight(isNight ? 0x93c5fd : 0xfffbeb, isNight ? 0.38 : 1.15);
                 dirLight.position.set(28, 45, 24);
-                dirLight.castShadow = true;
-                dirLight.shadow.mapSize.width = 2048;
-                dirLight.shadow.mapSize.height = 2048;
+                dirLight.castShadow = Boolean(initGfx.shadows);
+                dirLight.shadow.mapSize.width = 1024;
+                dirLight.shadow.mapSize.height = 1024;
                 const d = 36;
                 dirLight.shadow.camera.left = -d;
                 dirLight.shadow.camera.right = d;
@@ -935,11 +1021,11 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 const sunGroup = new THREE.Group();
                 sunGroup.position.set(38, 46, -42);
                 const sunCore = new THREE.Mesh(
-                    new THREE.SphereGeometry(4.5, 20, 20),
+                    new THREE.SphereGeometry(4.5, 12, 12),
                     new THREE.MeshBasicMaterial({ color: 0xfde047 })
                 );
                 const sunHalo = new THREE.Mesh(
-                    new THREE.SphereGeometry(6.4, 20, 20),
+                    new THREE.SphereGeometry(6.4, 12, 12),
                     new THREE.MeshBasicMaterial({ color: 0xfef08a, transparent: true, opacity: 0.35 })
                 );
                 sunGroup.add(sunCore, sunHalo);
@@ -950,11 +1036,11 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 const moonGroup = new THREE.Group();
                 moonGroup.position.set(-36, 44, -40);
                 const moonCore = new THREE.Mesh(
-                    new THREE.SphereGeometry(3.8, 20, 20),
+                    new THREE.SphereGeometry(3.8, 12, 12),
                     new THREE.MeshBasicMaterial({ color: 0xf8fafc })
                 );
                 const moonGlow = new THREE.Mesh(
-                    new THREE.SphereGeometry(5.5, 20, 20),
+                    new THREE.SphereGeometry(5.5, 12, 12),
                     new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.25 })
                 );
                 moonGroup.add(moonCore, moonGlow);
@@ -976,7 +1062,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
                 const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.65, transparent: true, opacity: 0.9 });
                 const starsMesh = new THREE.Points(starGeo, starMat);
-                starsMesh.visible = isNight;
+                starsMesh.visible = isNight && initGfx.skyEffects;
                 scene.add(starsMesh);
 
                 // 4. Lightweight Drifting 3D Low-Poly Clouds
@@ -990,7 +1076,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 });
                 cloudMats.push(cloudMat);
 
-                for (let c = 0; c < 14; c++) {
+                for (let c = 0; c < 12; c++) {
                     const cl = new THREE.Group();
                     const mainPuff = new THREE.Mesh(new THREE.BoxGeometry(5.5, 1.4, 3.2), cloudMat);
                     const puffL = new THREE.Mesh(new THREE.BoxGeometry(3.5, 1.1, 2.5), cloudMat);
@@ -1006,9 +1092,11 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                     cl.userData = { speed: 0.7 + (c % 3) * 0.35 };
                     cloudsGroup.add(cl);
                 }
+                cloudsGroup.visible = Boolean(initGfx.skyEffects);
                 scene.add(cloudsGroup);
 
                 const nightLights = [];
+                const foliageList = [];
 
                 // ====================================================================
                 // LUSH INDONESIAN CAMPUS PARK SURROUNDINGS (96m x 96m PLOT)
@@ -1034,11 +1122,11 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 scene.add(culinaryAlley);
 
                 // Decorative Koi Pond & Fountain in Front Plaza (X: 0, Z: 21)
-                const pondRim = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.6, 0.45, 20), new THREE.MeshStandardMaterial({ color: 0x64748b }));
+                const pondRim = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.6, 0.45, 14), new THREE.MeshStandardMaterial({ color: 0x64748b }));
                 pondRim.position.set(0, 0.22, 21.0);
-                const pondWater = new THREE.Mesh(new THREE.CylinderGeometry(3.1, 3.1, 0.38, 20), new THREE.MeshStandardMaterial({ color: 0x0ea5e9, roughness: 0.2 }));
+                const pondWater = new THREE.Mesh(new THREE.CylinderGeometry(3.1, 3.1, 0.38, 14), new THREE.MeshStandardMaterial({ color: 0x0ea5e9, roughness: 0.2 }));
                 pondWater.position.set(0, 0.26, 21.0);
-                const fountainTier = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.1, 1.4, 12), new THREE.MeshStandardMaterial({ color: 0xe2e8f0 }));
+                const fountainTier = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.1, 1.4, 10), new THREE.MeshStandardMaterial({ color: 0xe2e8f0 }));
                 fountainTier.position.set(0, 0.85, 21.0);
                 scene.add(pondRim, pondWater, fountainTier);
 
@@ -1052,64 +1140,65 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 gazRoof.rotation.y = Math.PI / 4;
                 gazeboGroup.add(gazDeck, gazRoof);
                 [[-1.9, -1.9], [1.9, -1.9], [-1.9, 1.9], [1.9, 1.9]].forEach(([px, pz]) => {
-                    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.5, 8), new THREE.MeshStandardMaterial({ color: 0x451a03 }));
+                    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.5, 6), new THREE.MeshStandardMaterial({ color: 0x451a03 }));
                     post.position.set(px, 1.4, pz);
                     gazeboGroup.add(post);
                 });
                 scene.add(gazeboGroup);
 
-                // Procedural Trees Builder (Oak/Rindang, Pine/Cemara, Palm)
+                // Procedural Low-Poly Trees Builder (Shared Geometries for Zero Startup Lag!)
                 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
                 const leafMat1 = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.8 });
                 const leafMat2 = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.8 });
                 const leafMat3 = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.8 });
 
-                const addTree = (tx, tz, scale = 1, style = 'oak') => {
+                const sharedTrunkGeo = new THREE.CylinderGeometry(0.24, 0.36, 2.4, 6);
+                const sharedCone1Geo = new THREE.ConeGeometry(1.7, 2.6, 6);
+                const sharedCone2Geo = new THREE.ConeGeometry(1.3, 2.2, 6);
+                const sharedCrownMainGeo = new THREE.DodecahedronGeometry(1.65, 0);
+                const sharedCrownSubGeo = new THREE.DodecahedronGeometry(1.2, 0);
+
+                const addTree = (tx, tz, scale = 1, style = 'oak', treeIdx = 0) => {
                     const tg = new THREE.Group();
                     tg.position.set(tx, 0, tz);
                     tg.scale.set(scale, scale, scale);
-                    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.36, 2.4, 8), trunkMat);
+                    const trunk = new THREE.Mesh(sharedTrunkGeo, trunkMat);
                     trunk.position.y = 1.2;
-                    trunk.castShadow = true;
                     tg.add(trunk);
 
                     if (style === 'pine') {
-                        const c1 = new THREE.Mesh(new THREE.ConeGeometry(1.7, 2.6, 8), leafMat1);
+                        const c1 = new THREE.Mesh(sharedCone1Geo, leafMat1);
                         c1.position.y = 2.8;
-                        c1.castShadow = true;
-                        const c2 = new THREE.Mesh(new THREE.ConeGeometry(1.3, 2.2, 8), leafMat2);
+                        const c2 = new THREE.Mesh(sharedCone2Geo, leafMat2);
                         c2.position.y = 4.1;
-                        c2.castShadow = true;
                         tg.add(c1, c2);
                     } else {
-                        const crownMain = new THREE.Mesh(new THREE.DodecahedronGeometry(1.65, 1), leafMat2);
+                        const crownMain = new THREE.Mesh(sharedCrownMainGeo, leafMat2);
                         crownMain.position.y = 3.1;
-                        crownMain.castShadow = true;
-                        const crownSub = new THREE.Mesh(new THREE.DodecahedronGeometry(1.2, 1), leafMat3);
+                        const crownSub = new THREE.Mesh(sharedCrownSubGeo, leafMat3);
                         crownSub.position.set(0.7, 2.7, 0.5);
-                        const crownSub2 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.1, 1), leafMat1);
-                        crownSub2.position.set(-0.7, 2.8, -0.4);
-                        tg.add(crownMain, crownSub, crownSub2);
+                        tg.add(crownMain, crownSub);
                     }
+                    tg.userData = { treeIdx };
+                    foliageList.push(tg);
                     scene.add(tg);
                 };
 
-                // 38 Lush Trees Surrounding the Mega Office Building
+                // 36 Lush Trees Surrounding the Mega Office Building (Tagged for Dynamic Graphics Scaling)
                 const treeCoords = [
-                    // West Park Forest
-                    [-26, -18, 1.2, 'oak'], [-31, -12, 1.4, 'pine'], [-25, -5, 1.1, 'oak'], [-30, 2, 1.3, 'oak'],
-                    [-26, 9, 1.2, 'pine'], [-32, 16, 1.5, 'oak'], [-25, 22, 1.1, 'oak'], [-20, 27, 1.3, 'pine'],
-                    // North Back Garden
-                    [-22, -22, 1.3, 'pine'], [-15, -21, 1.2, 'oak'], [-8, -23, 1.4, 'oak'], [0, -21, 1.1, 'pine'],
-                    [8, -23, 1.3, 'oak'], [16, -21, 1.2, 'pine'], [24, -22, 1.4, 'oak'], [30, -18, 1.2, 'oak'],
-                    // East Culinary Park & Alley
-                    [31, -10, 1.3, 'oak'], [30, -2, 1.1, 'pine'], [32, 6, 1.4, 'oak'], [30, 14, 1.2, 'oak'],
-                    [28, 22, 1.3, 'pine'], [22, 26, 1.2, 'oak'],
-                    // South Front Campus Avenue
-                    [-12, 29, 1.3, 'oak'], [-5, 31, 1.1, 'pine'], [6, 30, 1.4, 'oak'], [14, 28, 1.2, 'oak'],
-                    [-28, -26, 1.5, 'pine'], [34, -24, 1.4, 'pine'], [-35, 25, 1.4, 'oak'], [35, 25, 1.3, 'oak']
+                    // Core 8 Trees (Always visible even on Potato)
+                    [-25, -5, 1.1, 'oak'], [-25, 22, 1.1, 'oak'], [-8, -23, 1.4, 'oak'], [16, -21, 1.2, 'pine'],
+                    [30, -2, 1.1, 'pine'], [28, 22, 1.3, 'pine'], [-12, 29, 1.3, 'oak'], [14, 28, 1.2, 'oak'],
+                    // Medium Tier Trees (Visible on Medium/Balanced & High)
+                    [-26, -18, 1.2, 'oak'], [-30, 2, 1.3, 'oak'], [-26, 9, 1.2, 'pine'], [-20, 27, 1.3, 'pine'],
+                    [-15, -21, 1.2, 'oak'], [0, -21, 1.1, 'pine'], [8, -23, 1.3, 'oak'], [24, -22, 1.4, 'oak'],
+                    [31, -10, 1.3, 'oak'], [32, 6, 1.4, 'oak'], [30, 14, 1.2, 'oak'], [6, 30, 1.4, 'oak'],
+                    // Full Tier Outer Forest Trees (Visible on High & Ultra)
+                    [-31, -12, 1.4, 'pine'], [-32, 16, 1.5, 'oak'], [-22, -22, 1.3, 'pine'], [30, -18, 1.2, 'oak'],
+                    [22, 26, 1.2, 'oak'], [-5, 31, 1.1, 'pine'], [-28, -26, 1.5, 'pine'], [34, -24, 1.4, 'pine'],
+                    [-35, 25, 1.4, 'oak'], [35, 25, 1.3, 'oak'], [-36, 0, 1.3, 'pine'], [36, 0, 1.3, 'oak']
                 ];
-                treeCoords.forEach(([x, z, sc, st]) => addTree(x, z, sc, st));
+                treeCoords.forEach(([x, z, sc, st], idx) => addTree(x, z, sc, st, idx));
 
                 // Colorful Flower Beds & Bushes along the front & sides of the Office
                 const bushPositions = [
@@ -1117,31 +1206,21 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                     [-22.5, -8], [-22.5, -2], [-22.5, 4], [-22.5, 10]
                 ];
                 bushPositions.forEach(([bx, bz], i) => {
+                    const bushGroup = new THREE.Group();
                     const bush = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.65, 0.9), leafMat2);
                     bush.position.set(bx, 0.35, bz);
                     const flower = new THREE.Mesh(
-                        new THREE.SphereGeometry(0.22, 6, 6),
+                        new THREE.SphereGeometry(0.22, 5, 5),
                         new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0xf43f5e : 0xfacc15 })
                     );
                     flower.position.set(bx, 0.75, bz);
-                    scene.add(bush, flower);
+                    bushGroup.add(bush, flower);
+                    bushGroup.userData = { treeIdx: 10 + i };
+                    foliageList.push(bushGroup);
+                    scene.add(bushGroup);
                 });
 
-                // Garden Benches & Warm Street Lamps
-                [[-8, 23], [8, 23], [12, 19.5], [22, 10]].forEach(([lx, lz]) => {
-                    const bench = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.45, 0.65), new THREE.MeshStandardMaterial({ color: 0x78350f }));
-                    bench.position.set(lx, 0.25, lz);
-                    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 3.6, 8), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
-                    pole.position.set(lx + 1.4, 1.8, lz);
-                    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), new THREE.MeshBasicMaterial({ color: 0xfef08a }));
-                    bulb.position.set(lx + 1.4, 3.6, lz);
-                    const pLight = new THREE.PointLight(0xfbbf24, isNight ? 1.2 : 0.0, 12);
-                    pLight.position.set(lx + 1.4, 3.4, lz);
-                    nightLights.push(pLight);
-                    scene.add(bench, pole, bulb, pLight);
-                });
-
-                // Bendera Merah Putih in Front Plaza
+                foliageMeshesRef.current = foliageList;
                 const flagPole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 6.2, 10), new THREE.MeshStandardMaterial({ color: 0xe2e8f0 }));
                 flagPole.position.set(-7.5, 3.1, 19.5);
                 const flagRed = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.48, 0.04), new THREE.MeshStandardMaterial({ color: 0xdc2626 }));
@@ -1356,30 +1435,44 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 skyRefs.current = { hemi, dirLight, sunGroup, moonGroup, starsMesh, cloudsGroup, cloudMats, nightLights };
 
                 // ====================================================================
-                // REAL-TIME ANIMATION LOOP (CLOUDS, STARS & 19 AGENTS)
+                // REAL-TIME ANIMATION LOOP (DYNAMIC FPS CAP, LIVE FPS COUNTER & 19 AGENTS)
                 // ====================================================================
-               const clock = new THREE.Clock();
+                const clock = new THREE.Clock();
                 let frameId;
                 let timeAccumulator = 0;
-                const targetFrameRate = 1 / 30; // Kunci stabil di 30 FPS agar GPU adem & bebas lag
+                let fpsFrames = 0;
+                let fpsTimer = 0;
 
                 const animate = () => {
                     frameId = requestAnimationFrame(animate);
-                    
+
                     const rawDelta = clock.getDelta();
                     timeAccumulator += rawDelta;
 
-                    // Lewati proses render jika belum mencapai interval 30 FPS
-                    if (timeAccumulator < targetFrameRate) return;
+                    const gfx = stateRef.current.graphicsSettings || DEFAULT_GRAPHICS;
+                    const targetCap = gfx.targetFPS || 30;
+                    const frameInterval = 1 / targetCap;
+
+                    if (timeAccumulator < frameInterval) return;
 
                     const dt = Math.min(timeAccumulator, 0.1);
-                    timeAccumulator = 0; // Reset akumulator setelah frame dieksekusi
+                    timeAccumulator = timeAccumulator % frameInterval;
                     const elapsed = clock.getElapsedTime();
+
+                    // Calculate Live FPS Counter for Top Bar
+                    fpsFrames++;
+                    fpsTimer += dt;
+                    if (fpsTimer >= 0.75) {
+                        const measuredFps = Math.min(60, Math.round(fpsFrames / fpsTimer));
+                        if (onFpsUpdate) onFpsUpdate(measuredFps);
+                        fpsFrames = 0;
+                        fpsTimer = 0;
+                    }
 
                     controls.update();
 
-                    // Gently drift 3D clouds across the sky
-                    if (skyRefs.current.cloudsGroup) {
+                    // Gently drift 3D clouds across the sky (only if skyEffects ON)
+                    if (gfx.skyEffects && skyRefs.current.cloudsGroup) {
                         skyRefs.current.cloudsGroup.children.forEach(cl => {
                             cl.position.x += cl.userData.speed * dt;
                             if (cl.position.x > 70) cl.position.x = -70;
@@ -1387,11 +1480,18 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                     }
 
                     // Subtle star twinkle at night
-                    if (skyRefs.current.starsMesh && skyRefs.current.starsMesh.visible) {
+                    if (gfx.skyEffects && skyRefs.current.starsMesh && skyRefs.current.starsMesh.visible) {
                         skyRefs.current.starsMesh.rotation.y = elapsed * 0.008;
                     }
 
-                    const { agents: currAgents, sleepMode: sMode, loungeMode: lMode, activeFloor: aFloor, idleTick: iTick } = stateRef.current;
+                    const {
+                        agents: currAgents,
+                        sleepMode: sMode,
+                        loungeMode: lMode,
+                        activeFloor: aFloor,
+                        idleTick: iTick,
+                        selectedAgentId: selId
+                    } = stateRef.current;
                     const rigs = rigsRef.current;
 
                     currAgents.forEach((ag, idx) => {
@@ -1414,7 +1514,8 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                 waypoints: [],
                                 targetKey: `${target.floor}:${target.x.toFixed(1)},${target.z.toFixed(1)}`,
                                 walkPhase: idx * 0.9,
-                                bubbleEl
+                                bubbleEl,
+                                lastHtmlKey: ''
                             };
                         }
 
@@ -1474,7 +1575,6 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                 r.root.position.y = baseY;
                                 r.bodyGroup.rotation.x = 0;
                                 r.bodyGroup.position.y = 0.46;
-                                // Legs bent forward (+Z local), arms reaching forward (+Z local) onto keyboard!
                                 r.leftLegPivot.rotation.x = -Math.PI / 2.2;
                                 r.rightLegPivot.rotation.x = -Math.PI / 2.2;
                                 if (ag.state === 'Working' || ag.state === 'Thinking') {
@@ -1497,36 +1597,49 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                             }
                         }
 
-                        // Project 2D Floating Name & Status Bubble
+                        // Project 2D Floating Name & Status Bubble (Respecting Graphics Label Mode)
                         if (r.bubbleEl) {
-                            if (!visibleOnCurrentFloor) {
+                            const labelMode = gfx.labelMode || 'all';
+                            const shouldShowLabel =
+                                visibleOnCurrentFloor &&
+                                labelMode !== 'none' &&
+                                (labelMode === 'all' || selId === ag.id);
+
+                            if (!shouldShowLabel) {
                                 r.bubbleEl.style.opacity = '0';
+                                r.bubbleEl.style.pointerEvents = 'none';
                             } else {
                                 const p = r.root.position.clone();
                                 p.y += 1.68;
                                 p.project(camera);
                                 if (p.z > 1) {
                                     r.bubbleEl.style.opacity = '0';
+                                    r.bubbleEl.style.pointerEvents = 'none';
                                 } else {
                                     const sx = (p.x * 0.5 + 0.5) * container.clientWidth;
                                     const sy = (-(p.y * 0.5) + 0.5) * container.clientHeight;
                                     r.bubbleEl.style.opacity = '1';
+                                    r.bubbleEl.style.pointerEvents = 'auto';
                                     r.bubbleEl.style.left = `${sx}px`;
                                     r.bubbleEl.style.top = `${sy}px`;
                                     const isWalking = r.waypoints.length > 0;
-                                    const genderBadge = ag.gender === 'female' ? '♀' : '♂';
-                                    r.bubbleEl.innerHTML = `
-                                        <div class="flex flex-col items-center group">
-                                            <div class="px-1.5 py-0.5 rounded-md text-[9px] sm:text-[10px] font-mono mb-0.5 shadow bg-slate-900/90 text-cyan-300 border border-cyan-500/30 max-w-[140px] sm:max-w-[175px] truncate">
-                                                ${isWalking ? '🚶 Jalan...' : target.bubble}
+                                    const bubbleText = isWalking ? '🚶 Jalan...' : target.bubble;
+                                    if (r.lastHtmlKey !== bubbleText) {
+                                        r.lastHtmlKey = bubbleText;
+                                        const genderBadge = ag.gender === 'female' ? '♀' : '♂';
+                                        r.bubbleEl.innerHTML = `
+                                            <div class="flex flex-col items-center group">
+                                                <div class="px-1.5 py-0.5 rounded-md text-[9px] sm:text-[10px] font-mono mb-0.5 shadow bg-slate-900/90 text-cyan-300 border border-cyan-500/30 max-w-[140px] sm:max-w-[175px] truncate">
+                                                    ${bubbleText}
+                                                </div>
+                                                <div class="px-2 py-0.5 rounded-full bg-slate-950/95 border border-slate-700 text-white text-[10px] sm:text-[11px] font-semibold flex items-center gap-1 shadow-lg group-hover:scale-105 transition">
+                                                    <span class="w-2 h-2 rounded-full" style="background:${ag.color}"></span>
+                                                    <span>${ag.name.split(' ')[0]}</span>
+                                                    <span class="text-[9px] opacity-75">${genderBadge}</span>
+                                                </div>
                                             </div>
-                                            <div class="px-2 py-0.5 rounded-full bg-slate-950/95 border border-slate-700 text-white text-[10px] sm:text-[11px] font-semibold flex items-center gap-1 shadow-lg group-hover:scale-105 transition">
-                                                <span class="w-2 h-2 rounded-full" style="background:${ag.color}"></span>
-                                                <span>${ag.name.split(' ')[0]}</span>
-                                                <span class="text-[9px] opacity-75">${genderBadge}</span>
-                                            </div>
-                                        </div>
-                                    `;
+                                        `;
+                                    }
                                 }
                             }
                         }
@@ -1552,9 +1665,35 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 };
             }, []);
 
+            // Live Apply In-Game Graphics Settings without Reloading Scene!
+            useEffect(() => {
+                const gfx = graphicsSettings || DEFAULT_GRAPHICS;
+                if (rendererRef.current && mountRef.current) {
+                    rendererRef.current.setPixelRatio(gfx.resolutionScale || 1.0);
+                    rendererRef.current.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
+                    rendererRef.current.shadowMap.enabled = Boolean(gfx.shadows);
+                }
+                const sr = skyRefs.current;
+                if (sr.dirLight) {
+                    sr.dirLight.castShadow = Boolean(gfx.shadows);
+                }
+                if (sr.cloudsGroup) {
+                    sr.cloudsGroup.visible = Boolean(gfx.skyEffects);
+                }
+                if (sr.starsMesh) {
+                    sr.starsMesh.visible = Boolean(darkMode && gfx.skyEffects);
+                }
+                // Foliage / Tree density scaling
+                const maxTreeIdx = gfx.foliageDensity === 'minimal' ? 8 : gfx.foliageDensity === 'medium' ? 20 : 99;
+                foliageMeshesRef.current.forEach(mesh => {
+                    mesh.visible = (mesh.userData.treeIdx || 0) < maxTreeIdx;
+                });
+            }, [graphicsSettings, darkMode]);
+
             // Dynamic Day (Blue Sky + Sun + White Clouds) vs Night (Starfield + Moon + Night Lamps)
             useEffect(() => {
                 const isNight = darkMode;
+                const gfx = stateRef.current.graphicsSettings || DEFAULT_GRAPHICS;
                 if (sceneRef.current) {
                     sceneRef.current.background = new THREE.Color(isNight ? 0x050816 : 0x60a5fa);
                     sceneRef.current.fog = new THREE.FogExp2(isNight ? 0x050816 : 0x93c5fd, 0.0045);
@@ -1571,7 +1710,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 }
                 if (sr.sunGroup) sr.sunGroup.visible = !isNight;
                 if (sr.moonGroup) sr.moonGroup.visible = isNight;
-                if (sr.starsMesh) sr.starsMesh.visible = isNight;
+                if (sr.starsMesh) sr.starsMesh.visible = Boolean(isNight && gfx.skyEffects);
                 sr.cloudMats.forEach(m => {
                     m.color.setHex(isNight ? 0x1e293b : 0xffffff);
                     m.opacity = isNight ? 0.55 : 0.92;
@@ -1621,10 +1760,10 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
         }
 
         // ============================================================================
-        // 6. MAIN APPLICATION (MOBILE-READY + 19-AGENT FORUM & SECRETARY RECAP)
+        // 6. MAIN APPLICATION (MOBILE-READY + GRAPHICS MENU + 19-AGENT FORUM)
         // ============================================================================
         function App() {
-            const [darkMode, setDarkMode] = useState(false); // Start in sunny Blue-Sky Daytime so greenery & sun shine!
+            const [darkMode, setDarkMode] = useState(false); // Start in sunny Blue-Sky Daytime
             const [activeFloor, setActiveFloor] = useState(1);
             const [sleepMode, setSleepMode] = useState(false);
             const [loungeMode, setLoungeMode] = useState(false);
@@ -1632,6 +1771,32 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
             const [resetTrigger, setResetTrigger] = useState(0);
             const [focusAgentId, setFocusAgentId] = useState(null);
             const [idleTick, setIdleTick] = useState(0);
+            const [currentFps, setCurrentFps] = useState(30);
+
+            // In-Game Graphics Settings State (Persisted in localStorage)
+            const [graphicsSettings, setGraphicsSettings] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('aica_graphics_settings_v1');
+                    return saved ? { ...DEFAULT_GRAPHICS, ...JSON.parse(saved) } : DEFAULT_GRAPHICS;
+                } catch {
+                    return DEFAULT_GRAPHICS;
+                }
+            });
+            const [showGraphicsModal, setShowGraphicsModal] = useState(false);
+
+            const updateGraphics = (patch) => {
+                setGraphicsSettings(prev => {
+                    const next = { ...prev, ...patch };
+                    localStorage.setItem('aica_graphics_settings_v1', JSON.stringify(next));
+                    return next;
+                });
+            };
+
+            const applyPreset = (presetKey) => {
+                const presetObj = GRAPHICS_PRESETS[presetKey] || DEFAULT_GRAPHICS;
+                setGraphicsSettings(presetObj);
+                localStorage.setItem('aica_graphics_settings_v1', JSON.stringify(presetObj));
+            };
 
             const [agents, setAgents] = useState(INITIAL_19_AGENTS);
             const [selectedAgentId, setSelectedAgentId] = useState('sasa-sekre');
@@ -1663,9 +1828,9 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                     recapText: `📋 **REKAPITULASI FORUM 19 AGENT — Disusun oleh Sasa (Sekretaris)**\n\nHalo Bos Nadzar! Seluruh 19 Agent telah melapor dari meja kerjanya masing-masing:\n- **Divisi 10 Matkul Smt 5 (Dipimpin Raka Komti & Tiara):** Siap membantu perhitungan Elektronika 2, Sistem Tenaga S1TE-08-A, Sinyal Diskret, Otomasi PLC, AI, IoT, Embedded, EkoBisnis, KWN, dan Laporan Praktikum.\n- **Divisi 3 Projek (Kevin AIoT, Doni Kelistrikan, Maya Film):** Siap merancang prototipe alat, panel kontrol daya MCB/Kontaktor, dan storyboard video dokumenter.\n- **Divisi Kepanitiaan (Dimas):** Siap menyusun TOR, Proposal Sponsorship, dan Rundown acara.\n\nSilakan ketik topik diskusi di bawah, dan aku (atau penanggap pilihanmu) akan merangkum jawaban dari seluruh 19 Agent sekaligus!`
                 }
             ]);
-
-            // Modals: API Key Setup & Vercel Deployment Guide
+            // Modals: API Key Setup, Model Selector & Vercel Deployment Guide
             const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('nadzar_gemini_key') || '');
+            const [preferredModel, setPreferredModel] = useState(() => localStorage.getItem('nadzar_gemini_model') || 'gemini-3.8-flash');
             const [showApiModal, setShowApiModal] = useState(false);
             const [showVercelModal, setShowVercelModal] = useState(false);
 
@@ -1719,7 +1884,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 setFocusAgentId(responder.id);
 
                 try {
-                    const recapText = await callGeminiForumRecap(topic, responder, agents, customApiKey);
+                    const recapText = await callGeminiForumRecap(topic, responder, agents, customApiKey, preferredModel);
                     setForumLogs(prev => [
                         {
                             id: `forum-${Date.now()}`,
@@ -1765,7 +1930,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 setAgents(prev => prev.map(a => a.id === targetId ? { ...a, state: 'Thinking', currentTask: `Menjawab: "${text.slice(0, 28)}..."` } : a));
 
                 try {
-                    const reply = await callGeminiAgent(selectedAgent, text, currentHistory, customApiKey);
+                    const reply = await callGeminiAgent(selectedAgent, text, currentHistory, customApiKey, preferredModel);
                     setChatHistories(prev => ({
                         ...prev,
                         [targetId]: [...(prev[targetId] || []), { sender: 'agent', text: reply }]
@@ -1800,29 +1965,32 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                     setSleepMode(false);
                     setLoungeMode(false);
                     setActiveFloor(1);
-                    setAgents(prev => prev.map((a, i) => ({ ...a, state: i % 2 === 0 ? 'Idle' : 'Working' })));
+                    setIdleTick(c => c + 1);
+                    setAgents(prev => prev.map(a => ({ ...a, state: 'Idle' })));
                 } else if (mode === 'lounge_f2') {
                     setSleepMode(false);
                     setLoungeMode(true);
                     setActiveFloor(2);
-                    setAgents(prev => prev.map((a, i) => ({ ...a, state: i % 2 === 0 ? 'Idle' : 'Working' })));
+                    setIdleTick(c => c + 1);
+                    setAgents(prev => prev.map(a => ({ ...a, state: 'Idle' })));
                 } else if (mode === 'sleep_f2') {
-                    const nextSleep = !sleepMode;
-                    setSleepMode(nextSleep);
                     setLoungeMode(false);
-                    if (nextSleep) {
-                        setActiveFloor(2);
-                        setAgents(prev => prev.map(a => ({ ...a, state: 'Idle' })));
-                    } else {
-                        setActiveFloor(1);
-                        setAgents(prev => prev.map(a => ({ ...a, state: 'Working' })));
-                    }
+                    setSleepMode(s => {
+                        const next = !s;
+                        setActiveFloor(next ? 2 : 1);
+                        return next;
+                    });
+                    setAgents(prev => prev.map(a => ({ ...a, state: 'Idle' })));
                 }
             };
 
-            const saveApiKey = (val) => {
+            const saveApiKey = (val, modelVal) => {
                 setCustomApiKey(val);
                 localStorage.setItem('nadzar_gemini_key', val);
+                if (modelVal) {
+                    setPreferredModel(modelVal);
+                    localStorage.setItem('nadzar_gemini_model', modelVal);
+                }
                 setShowApiModal(false);
             };
 
@@ -1830,7 +1998,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 <div className="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
                     
                     {/* ================================================================ */}
-                    {/* TOP NAVIGATION & ACTION BAR (MOBILE & DESKTOP RESPONSIVE)        */}
+                    {/* TOP NAVIGATION & ACTION BAR (WITH FPS BADGE & GRAPHICS MENU)     */}
                     {/* ================================================================ */}
                     <header className="h-14 shrink-0 px-3 sm:px-4 border-b border-slate-800 bg-slate-900/95 backdrop-blur flex items-center justify-between gap-2 z-30">
                         <div className="flex items-center gap-2.5 min-w-0">
@@ -1840,12 +2008,18 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                             <div className="min-w-0">
                                 <div className="flex items-center gap-1.5">
                                     <span className="font-bold text-xs sm:text-sm tracking-tight truncate">AICA — Nadzar's 19-Agent Mega Office</span>
-                                    <span className="hidden md:inline-block text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                                        19 Agents • Park & Sky 3D
+                                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border font-bold ${
+                                        currentFps >= 28
+                                            ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                            : currentFps >= 18
+                                            ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                                            : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                                    }`}>
+                                        {currentFps} FPS
                                     </span>
                                 </div>
                                 <p className="text-[10px] text-slate-400 truncate hidden sm:block">
-                                    11 Matkul Smt 5 • 3 Projek (AIoT, Listrik, Film) • Organisasi • Rekap Sekretaris Sasa
+                                    11 Matkul Smt 5 • 3 Projek (AIoT, Listrik, Film) • Model: {preferredModel}
                                 </p>
                             </div>
                         </div>
@@ -1853,13 +2027,13 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                         {/* Quick Simulation Triggers (Desktop) */}
                         <div className="hidden xl:flex items-center gap-1 bg-slate-800/90 p-1 rounded-xl border border-slate-700 text-[11px]">
                             <button onClick={() => triggerTeamAction('work_all')} className="px-2.5 py-1 rounded-lg hover:bg-sky-500/20 text-sky-300 font-medium transition">
-                                💻 Semua Kerja (Hadap Layar)
+                                💻 Semua Kerja
                             </button>
                             <button onClick={() => triggerTeamAction('meeting_all')} className="px-2.5 py-1 rounded-lg hover:bg-emerald-500/20 text-emerald-300 font-medium transition">
-                                🏛️ Kumpul Rapat 19 Agent
+                                🏛️ Kumpul Rapat
                             </button>
                             <button onClick={() => triggerTeamAction('park_relax')} className="px-2.5 py-1 rounded-lg hover:bg-green-500/20 text-green-300 font-medium transition">
-                                🌳 Jalan di Taman Hijau
+                                🌳 Taman Hijau
                             </button>
                             <button onClick={() => triggerTeamAction('lounge_f2')} className="px-2.5 py-1 rounded-lg hover:bg-purple-500/20 text-purple-300 font-medium transition">
                                 🎮 Lounge Lt.2
@@ -1869,8 +2043,19 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                             </button>
                         </div>
 
-                        {/* Right Controls: Day/Night Sky Toggle, API Key, Vercel Guide */}
+                        {/* Right Controls: Graphics Game Menu, Day/Night Sky Toggle, API Key, Vercel Guide */}
                         <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                                onClick={() => setShowGraphicsModal(true)}
+                                className="px-2.5 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/50 text-purple-200 text-xs font-bold flex items-center gap-1.5 transition shadow"
+                                title="Pengaturan Grafik Game (FPS, Resolusi, Bayangan, Pohon)"
+                            >
+                                🎮 <span>Grafik</span>
+                                <span className="hidden md:inline text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 uppercase">
+                                    {graphicsSettings.preset}
+                                </span>
+                            </button>
+
                             <button
                                 onClick={() => setDarkMode(d => !d)}
                                 className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition ${
@@ -1880,7 +2065,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                 }`}
                                 title="Ubah Langit Siang (Matahari & Awan) / Malam (Bulan & Bintang)"
                             >
-                                <span>{darkMode ? '🌙 Malam Berbintang' : '☀️ Siang Cerah'}</span>
+                                <span>{darkMode ? '🌙 Malam' : '☀️ Siang'}</span>
                             </button>
 
                             <button
@@ -1889,7 +2074,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                     customApiKey ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
                                 }`}
                             >
-                                🔑 <span className="hidden sm:inline">{customApiKey ? 'API Key Aktif' : 'API Key'}</span>
+                                🔑 <span className="hidden sm:inline">{customApiKey ? 'API Aktif' : 'API Key'}</span>
                             </button>
 
                             <button
@@ -1918,8 +2103,11 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                 panMode={panMode}
                                 resetTrigger={resetTrigger}
                                 focusAgentId={focusAgentId}
+                                selectedAgentId={selectedAgentId}
                                 onSelectAgent={handleSelectAgent}
                                 idleTick={idleTick}
+                                graphicsSettings={graphicsSettings}
+                                onFpsUpdate={setCurrentFps}
                             />
 
                             {/* TOP-LEFT ROOM LEGEND & QUICK MOBILE ACTIONS */}
@@ -2344,38 +2532,208 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                     </div>
 
                     {/* ================================================================ */}
-                    {/* MODAL 1: GOOGLE AI STUDIO API KEY CONFIGURATION                  */}
+                    {/* MODAL 0: IN-GAME GRAPHICS & PERFORMANCE SETTINGS                 */}
+                    {/* ================================================================ */}
+                    {showGraphicsModal && (
+                        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+                            <div className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl p-5 space-y-4 text-xs shadow-2xl max-h-[90vh] overflow-y-auto">
+                                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                                    <div>
+                                        <h3 className="font-bold text-sm text-purple-300 flex items-center gap-2">
+                                            🎮 Pengaturan Grafik & Performa 3D (In-Game Settings)
+                                        </h3>
+                                        <p className="text-[11px] text-slate-400">
+                                            Atur kualitas visual & FPS sesuai spesifikasi HP atau Laptop kamu secara real-time!
+                                        </p>
+                                    </div>
+                                    <button onClick={() => setShowGraphicsModal(false)} className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700">
+                                        <Icon name="x" className="w-4 h-4" />
+                                    </button>
+                                </div>
+
+                                {/* Preset Selector Buttons */}
+                                <div className="space-y-1.5">
+                                    <label className="font-bold text-slate-300 block">1. Pilih Preset Grafik Cepat:</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {Object.values(GRAPHICS_PRESETS).map(pr => (
+                                            <button
+                                                key={pr.preset}
+                                                onClick={() => applyPreset(pr.preset)}
+                                                className={`p-2.5 rounded-xl border text-left transition ${
+                                                    graphicsSettings.preset === pr.preset
+                                                        ? 'bg-purple-600/25 border-purple-400 text-white shadow'
+                                                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800'
+                                                }`}
+                                            >
+                                                <div className="font-bold text-xs">{pr.label.split('(')[0]}</div>
+                                                <div className="text-[10px] opacity-80">
+                                                    Res {pr.resolutionScale}x • {pr.targetFPS} FPS • Shadow {pr.shadows ? 'ON' : 'OFF'}
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Custom Sliders & Toggles */}
+                                <div className="space-y-3 pt-2 border-t border-slate-800">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div>
+                                            <div className="font-semibold text-slate-200">Skala Resolusi Render (Pixel Ratio)</div>
+                                            <div className="text-[10px] text-slate-400">Turunkan ke 0.75x atau 1.0x agar super enteng di layar tajam.</div>
+                                        </div>
+                                        <select
+                                            value={graphicsSettings.resolutionScale}
+                                            onChange={e => updateGraphics({ preset: 'custom', resolutionScale: parseFloat(e.target.value) })}
+                                            className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-cyan-300"
+                                        >
+                                            <option value={0.5}>0.5x (Ultra Cepat)</option>
+                                            <option value={0.75}>0.75x (Hemat GPU)</option>
+                                            <option value={1.0}>1.0x (Standar Anti-Lag)</option>
+                                            <option value={1.25}>1.25x (Tajam HD)</option>
+                                            <option value={1.75}>1.75x (Ultra Retina)</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div>
+                                            <div className="font-semibold text-slate-200">Batas Kecepatan Frame (Target FPS Cap)</div>
+                                            <div className="text-[10px] text-slate-400">30 FPS menjaga suhu laptop/HP tetap dingin & stabil.</div>
+                                        </div>
+                                        <select
+                                            value={graphicsSettings.targetFPS}
+                                            onChange={e => updateGraphics({ preset: 'custom', targetFPS: parseInt(e.target.value, 10) })}
+                                            className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-emerald-300"
+                                        >
+                                            <option value={24}>24 FPS (Cinematic Hemat)</option>
+                                            <option value={30}>30 FPS (Stabil Rekomendasi)</option>
+                                            <option value={45}>45 FPS (Smooth)</option>
+                                            <option value={60}>60 FPS (Maksimal)</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div>
+                                            <div className="font-semibold text-slate-200">Kepadatan Pohon & Penghijauan Taman</div>
+                                            <div className="text-[10px] text-slate-400">Mengatur jumlah pohon & bunga yang dirender di sekeliling gedung.</div>
+                                        </div>
+                                        <select
+                                            value={graphicsSettings.foliageDensity}
+                                            onChange={e => updateGraphics({ preset: 'custom', foliageDensity: e.target.value })}
+                                            className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-green-300"
+                                        >
+                                            <option value="minimal">Minimal (8 Pohon)</option>
+                                            <option value="medium">Sedang (20 Pohon)</option>
+                                            <option value="full">Penuh Rindang (42 Pohon & Bunga)</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div>
+                                            <div className="font-semibold text-slate-200">Label Nama Melayang di Atas Kepala Agent</div>
+                                            <div className="text-[10px] text-slate-400">Pilih "Saat Dipilih" jika layar HP terasa penuh atau berat.</div>
+                                        </div>
+                                        <select
+                                            value={graphicsSettings.labelMode}
+                                            onChange={e => updateGraphics({ preset: 'custom', labelMode: e.target.value })}
+                                            className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-amber-300"
+                                        >
+                                            <option value="all">Tampilkan Semua (19 Agent)</option>
+                                            <option value="selected">Saat Agent Dipilih Saja (Hemat DOM)</option>
+                                            <option value="none">Sembunyikan Semua</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 pt-1">
+                                        <button
+                                            onClick={() => updateGraphics({ preset: 'custom', shadows: !graphicsSettings.shadows })}
+                                            className={`p-2.5 rounded-xl border font-semibold flex items-center justify-between ${
+                                                graphicsSettings.shadows
+                                                    ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                                                    : 'bg-slate-950 border-slate-800 text-slate-400'
+                                            }`}
+                                        >
+                                            <span>☀️ Bayangan (Shadows)</span>
+                                            <span className="font-mono">{graphicsSettings.shadows ? 'ON' : 'OFF'}</span>
+                                        </button>
+
+                                        <button
+                                            onClick={() => updateGraphics({ preset: 'custom', skyEffects: !graphicsSettings.skyEffects })}
+                                            className={`p-2.5 rounded-xl border font-semibold flex items-center justify-between ${
+                                                graphicsSettings.skyEffects
+                                                    ? 'bg-sky-500/20 border-sky-500/50 text-sky-300'
+                                                    : 'bg-slate-950 border-slate-800 text-slate-400'
+                                            }`}
+                                        >
+                                            <span>☁️ Awan & Bintang</span>
+                                            <span className="font-mono">{graphicsSettings.skyEffects ? 'ON' : 'OFF'}</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end pt-2">
+                                    <button
+                                        onClick={() => setShowGraphicsModal(false)}
+                                        className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold"
+                                    >
+                                        Selesai & Terapkan
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ================================================================ */}
+                    {/* MODAL 1: GOOGLE AI STUDIO API KEY & MODEL SELECTOR               */}
                     {/* ================================================================ */}
                     {showApiModal && (
                         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
                             <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-5 space-y-4 text-xs shadow-2xl">
                                 <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                                    <h3 className="font-bold text-sm flex items-center gap-2">
-                                        🔑 Hubungkan API Key Google AI Studio (Gratis)
+                                    <h3 className="font-bold text-sm flex items-center gap-2 text-emerald-400">
+                                        🔑 Hubungkan API Key & Pilih Model Gemini
                                     </h3>
                                     <button onClick={() => setShowApiModal(false)} className="p-1 rounded hover:bg-slate-800">
                                         <Icon name="x" className="w-4 h-4" />
                                     </button>
                                 </div>
-                                <p className="text-slate-300 leading-relaxed">
-                                    Tempelkan <b>GEMINI_API_KEY</b> yang sudah kamu buat di <code className="text-sky-400">aistudio.google.com</code>. Aplikasi ini otomatis memakai model gratis hemat kuota <b>gemini-3.8-flash</b>.
-                                </p>
-                                <input
-                                    type="password"
-                                    value={customApiKey}
-                                    onChange={e => setCustomApiKey(e.target.value)}
-                                    placeholder="AIzaSy..."
-                                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 font-mono text-xs"
-                                />
+
+                                <div className="space-y-1.5">
+                                    <label className="font-semibold text-slate-200 block">1. Gemini API Key (<code className="text-sky-400">aistudio.google.com</code>):</label>
+                                    <input
+                                        type="password"
+                                        value={customApiKey}
+                                        onChange={e => setCustomApiKey(e.target.value)}
+                                        placeholder="AIzaSy..."
+                                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 font-mono text-xs"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="font-semibold text-slate-200 block">2. Pilih Model Gemini Utama (Otomatis Fallback jika Limit):</label>
+                                    <select
+                                        value={preferredModel}
+                                        onChange={e => setPreferredModel(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 font-mono text-xs text-cyan-300"
+                                    >
+                                        <option value="gemini-3.8-flash">gemini-3.8-flash (Terbaru - Rekomendasi Google AI Studio)</option>
+                                        <option value="gemini-3-flash-preview">gemini-3-flash-preview (Cepat & Ringan)</option>
+                                        <option value="gemini-2.0-flash">gemini-2.0-flash (Alternatif Stabil)</option>
+                                        <option value="gemini-1.5-flash">gemini-1.5-flash (Legacy Flash)</option>
+                                    </select>
+                                    <p className="text-[10px] text-slate-400">
+                                        💡 Sistem otomatis mencoba model cadangan apabila model utama yang dipilih sedang penuh atau tidak tersedia untuk akunmu.
+                                    </p>
+                                </div>
+
                                 <div className="flex justify-end gap-2 pt-2">
                                     <button
-                                        onClick={() => saveApiKey('')}
+                                        onClick={() => saveApiKey('', 'gemini-3.8-flash')}
                                         className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300"
                                     >
-                                        Reset / Pakai Default
+                                        Reset Default
                                     </button>
                                     <button
-                                        onClick={() => saveApiKey(customApiKey)}
+                                        onClick={() => saveApiKey(customApiKey, preferredModel)}
                                         className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
                                     >
                                         Simpan & Aktifkan 19 Agent
@@ -2429,7 +2787,7 @@ git push origin main`}</pre>
                                     <div className="p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-500/30 space-y-1">
                                         <div className="font-bold text-indigo-300">💡 Tips Hemat Kuota Gemini Gratis:</div>
                                         <p className="text-slate-300">
-                                            Aplikasi ini sudah diset menggunakan model <b><code>gemini-3.8-flash</code></b> yang punya batas kuota gratis harian besar di Google AI Studio. Animasi jalan-jalan 3D dihitung 100% oleh prosesor browser (Three.js), sehingga <b>tidak memakan kuota token AI</b> kecuali saat kamu benar-benar mengirim chat ke agen!
+                                            Aplikasi ini sudah diset menggunakan model <b><code>gemini-2.5-flash</code></b> yang punya batas kuota gratis harian besar di Google AI Studio. Animasi jalan-jalan 3D dihitung 100% oleh prosesor browser (Three.js), sehingga <b>tidak memakan kuota token AI</b> kecuali saat kamu benar-benar mengirim chat ke agen!
                                         </p>
                                     </div>
                                 </div>
