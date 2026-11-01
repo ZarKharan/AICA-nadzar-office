@@ -1991,8 +1991,8 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
             const [laptopClock, setLaptopClock] = useState(new Date());
             const [manualAgentId, setManualAgentId] = useState('nadzar-ceo');
             const [manualPlace, setManualPlace] = useState('desk');
-            const [directorPanelOpen, setDirectorPanelOpen] = useState(true);
-            const [rightPanelOpen, setRightPanelOpen] = useState(true);
+            const [directorPanelOpen, setDirectorPanelOpen] = useState(false);
+            const [rightPanelOpen, setRightPanelOpen] = useState(false);
             const [autoScheduleKey, setAutoScheduleKey] = useState('');
 
             // Individual Chat Histories
@@ -2509,7 +2509,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                             <span></span><button onClick={()=>nudgeCEO(0,-1.8)} className="rounded bg-slate-700 py-1">↑</button><span></span>
                                             <button onClick={()=>nudgeCEO(-1.8,0)} className="rounded bg-slate-700 py-1">←</button><button onClick={()=>nudgeCEO(0,1.8)} className="rounded bg-slate-700 py-1">↓</button><button onClick={()=>nudgeCEO(1.8,0)} className="rounded bg-slate-700 py-1">→</button>
                                         </div>
-                                        <div className="text-[9px] text-slate-500">WASD/←↑↓→: gerak CEO • H: fullscreen/panel • M: Director • G: Go • K: kerja • Z: tidur • C: kopi • P: pukul • [ ]: pilih agent • 1/2: lantai.</div>
+                                        <div className="text-[9px] text-slate-500">WASD/←↑↓→: gerak CEO • H: buka/tutup panel popup • M: Director • G: Go • K: kerja • Z: tidur • C: kopi • P: pukul • [ ]: pilih agent • 1/2: lantai.</div>
                                     </div>}
                                     <div className="text-[9px] text-slate-500">Jadwal otomatis: 20.00–07.00 tidur, 07.00–20.00 kerja (mengikuti jam lokal laptop). Perintah manual berlaku sampai pergantian jadwal berikutnya.</div>
                                     </div>}
@@ -2554,7 +2554,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                         🔄 Reset
                                     </button>
                                     <button onClick={() => setSideTab('Mission')} className="px-2.5 py-1.5 rounded-lg bg-indigo-600/80 hover:bg-indigo-500 text-white font-bold">🧭 Mission Control</button>
-                                    <button onClick={() => setRightPanelOpen(v => !v)} className="px-2.5 py-1.5 rounded-lg bg-sky-600/90 hover:bg-sky-500 text-white font-bold" title="Tampilkan/sembunyikan panel kanan">{rightPanelOpen ? '⛶ Fullscreen' : '▣ Tampilkan Panel'}</button>
+                                    <button onClick={() => setRightPanelOpen(v => !v)} className="px-2.5 py-1.5 rounded-lg bg-sky-600/90 hover:bg-sky-500 text-white font-bold" title="Buka/tutup panel mengambang">{rightPanelOpen ? '✕ Tutup Panel' : '▣ Buka Panel'}</button>
                                     <button onClick={() => { setSimulationPaused(v => !v); logActivity(simulationPaused ? 'Simulasi kantor dilanjutkan.' : 'Simulasi kantor dijeda.'); }} className={`px-2.5 py-1.5 rounded-lg font-medium ${simulationPaused ? 'bg-amber-500 text-slate-950' : 'text-slate-300 hover:bg-slate-800'}`}>{simulationPaused ? '▶ Lanjut Simulasi' : '⏸ Pause'}</button>
                                     {/* Mobile Drawer Toggle Button */}
                                     <button
@@ -2569,8 +2569,9 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
 
                         {/* RIGHT / MOBILE SLIDE-OVER: FORUM DISKUSI 19 AGENT & REKAP SEKRE + CHAT */}
                         <aside
-                            className={`${rightPanelOpen ? 'w-full lg:w-[460px] opacity-100' : 'w-0 opacity-0 pointer-events-none'} shrink-0 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col z-30 transition-all duration-200 overflow-hidden ${
-                                mobilePanelOpen ? 'h-[64vh] lg:h-full' : 'h-0 lg:h-full'
+                            aria-hidden={!rightPanelOpen}
+                            className={`absolute right-0 top-0 bottom-0 w-full max-w-[460px] bg-slate-900/95 backdrop-blur-xl border-l border-slate-700/80 shadow-2xl flex flex-col z-40 transition-all duration-300 overflow-hidden ${
+                                rightPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : 'translate-x-full opacity-0 pointer-events-none'
                             }`}
                         >
                             {/* Navigation Tabs */}
