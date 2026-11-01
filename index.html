@@ -496,8 +496,9 @@
             { id: 'gazebo', floor: 1, x: -14.0, z: 20.5, ry: 0, posture: 'sit', label: 'Santai Menghirup Udara Segar di Gazebo Taman' },
             { id: 'fountain', floor: 1, x: 0.0, z: 21.0, ry: Math.PI, posture: 'stand', label: 'Lihat Ikan Koi di Kolam Air Mancur Taman' },
             { id: 'park_bench', floor: 1, x: 12.0, z: 19.5, ry: Math.PI, posture: 'sit', label: 'Duduk di Bangku Taman Bawah Pohon Rindang' },
-            { id: 'bakso', floor: 1, x: 24.5, z: -3.0, ry: Math.PI / 2, posture: 'stand', label: 'Jajan Bakso Malang di Taman Kuliner Samping' },
-            { id: 'kopi_keliling', floor: 1, x: 24.5, z: 3.5, ry: Math.PI / 2, posture: 'stand', label: 'Beli Kopi Keliling di Bawah Pohon' },
+            { id: 'bakso', floor: 1, x: 23.8, z: -7.0, ry: Math.PI / 2, posture: 'stand', label: 'Jajan di Bakso Pak Kumis — Bakso & Mie Ayam' },
+            { id: 'es_teh_desa', floor: 1, x: 23.8, z: 0.0, ry: Math.PI / 2, posture: 'stand', label: 'Beli Es Teh Desa — Es Teh Jumbo & Segar' },
+            { id: 'fotokopi', floor: 1, x: 23.8, z: 7.0, ry: Math.PI / 2, posture: 'stand', label: 'Ke Fotokopi AICA — Print, Scan & Jilid' },
             { id: 'bendera', floor: 1, x: -7.5, z: 18.5, ry: Math.PI, posture: 'stand', label: 'Berdiri Tegap di Tiang Bendera Merah Putih' },
             // Floor 2 Lounge Santai Spots
             { id: 'f2_theater', floor: 2, x: -12.0, z: 4.5, ry: Math.PI, posture: 'sit', label: 'Nonton Home Theater Lantai 2' },
@@ -795,7 +796,8 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
             idleTick,
             graphicsSettings,
             simulationPaused,
-            onFpsUpdate
+            onFpsUpdate,
+            agentPositionsRef
         }) {
             const mountRef = useRef(null);
             const labelsRef = useRef(null);
@@ -1252,17 +1254,36 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 flagWhite.position.set(-6.6, 5.32, 19.5);
                 scene.add(flagPole, flagRed, flagWhite);
 
-                // Gerobak Bakso & Kopi Keliling in Side Culinary Park (X: 25)
-                const baksoCart = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.35, 2.2), new THREE.MeshStandardMaterial({ color: 0x0284c7 }));
-                baksoCart.position.set(25.5, 0.7, -3.0);
-                const baksoLight = new THREE.PointLight(0xfbbf24, isNight ? 1.6 : 0.1, 10);
-                baksoLight.position.set(25.5, 2.3, -3.0);
-                nightLights.push(baksoLight);
-                scene.add(baksoCart, baksoLight);
-
-                const kopiCart = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.1, 1.8), new THREE.MeshStandardMaterial({ color: 0x16a34a }));
-                kopiCart.position.set(25.5, 0.58, 3.5);
-                scene.add(kopiCart);
+                // Tiga kios di tepi office: Bakso, Es Teh Desa, dan Fotokopi.
+                // Papan nama memakai CanvasTexture agar nama kios terbaca di scene 3D.
+                const makeKioskSign = (title, subtitle, color) => {
+                    const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 160;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = color; ctx.fillRect(0, 0, 512, 160);
+                    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 48px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText(title, 256, 68);
+                    ctx.font = '24px Arial'; ctx.fillText(subtitle, 256, 112);
+                    const tex = new THREE.CanvasTexture(canvas);
+                    const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.0), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+                    sign.position.y = 2.15; sign.rotation.y = Math.PI / 2;
+                    return sign;
+                };
+                const createEdgeKiosk = (title, subtitle, z, bodyColor, signColor, lightColor) => {
+                    const group = new THREE.Group(); group.position.set(25.4, 0, z);
+                    const body = new THREE.Mesh(new THREE.BoxGeometry(1.65, 1.35, 2.7), new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.72 }));
+                    body.position.y = 0.72; body.castShadow = true; body.receiveShadow = true; group.add(body);
+                    const counter = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.16, 2.85), new THREE.MeshStandardMaterial({ color: 0xf8fafc }));
+                    counter.position.y = 1.42; group.add(counter);
+                    const roof = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.16, 3.0), new THREE.MeshStandardMaterial({ color: signColor }));
+                    roof.position.y = 2.05; group.add(roof);
+                    group.add(makeKioskSign(title, subtitle, signColor));
+                    const lamp = new THREE.PointLight(lightColor, isNight ? 1.5 : 0.08, 9);
+                    lamp.position.set(0, 2.5, 0); group.add(lamp); nightLights.push(lamp);
+                    scene.add(group); return group;
+                };
+                createEdgeKiosk('BAKSO PAK KUMIS', 'Bakso & Mie Ayam', -7.0, 0x92400e, '#b91c1c', 0xfbbf24);
+                createEdgeKiosk('ES TEH DESA', 'Es Teh Jumbo & Segar', 0.0, 0x15803d, '#166534', 0xfde047);
+                createEdgeKiosk('FOTOKOPI AICA', 'Print • Scan • Jilid', 7.0, 0x1d4ed8, '#1e3a8a', 0x93c5fd);
 
                 // ====================================================================
                 // FLOOR 1 — EXPANDED 44m x 30m MEGA OFFICE BUILDING
@@ -1707,11 +1728,15 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                         }
 
                         if (ag.id === 'nadzar-ceo' && ag.swingUntil && ag.swingUntil > Date.now()) { r.rightArmPivot.rotation.x = -2.35; r.rightArmPivot.rotation.z = -0.75; }
+                        if (ag.coffeeUntil && ag.coffeeUntil > Date.now()) { r.rightArmPivot.rotation.x = -1.35 + Math.sin(elapsed * 5) * 0.08; r.rightArmPivot.rotation.z = -0.18; }
                         if (ag.dizzyUntil && ag.dizzyUntil > Date.now()) {
                             r.headGroup.rotation.z = Math.sin(elapsed * 15) * 0.32;
                             r.root.rotation.y += Math.sin(elapsed * 11) * 0.06;
                             r.bodyGroup.rotation.z = Math.sin(elapsed * 13) * 0.08;
                         } else { r.headGroup.rotation.z *= 0.82; r.bodyGroup.rotation.z *= 0.82; }
+                        if (agentPositionsRef && agentPositionsRef.current) {
+                            agentPositionsRef.current[ag.id] = { x: r.root.position.x, z: r.root.position.z, floor: r.currentFloor };
+                        }
 
                         // Project 2D Floating Name & Status Bubble (Respecting Graphics Label Mode)
                         if (r.bubbleEl) {
@@ -1933,6 +1958,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
             };
 
             const [agents, setAgents] = useState(INITIAL_19_AGENTS);
+            const agentPositionsRef = useRef({});
             const [selectedAgentId, setSelectedAgentId] = useState('sasa-sekre');
             const [categoryFilter, setCategoryFilter] = useState('ALL');
             const [sideTab, setSideTab] = useState('Forum'); // 'Forum' | 'Chat' | 'Directory' | 'Rooms'
@@ -1950,6 +1976,8 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
             const [manualAgentId, setManualAgentId] = useState('nadzar-ceo');
             const [manualPlace, setManualPlace] = useState('desk');
             const [directorPanelOpen, setDirectorPanelOpen] = useState(true);
+            const [rightPanelOpen, setRightPanelOpen] = useState(true);
+            const [autoScheduleKey, setAutoScheduleKey] = useState('');
 
             // Individual Chat Histories
             const [chatHistories, setChatHistories] = useState(() => {
@@ -1987,6 +2015,31 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 const clockTimer = setInterval(() => setLaptopClock(new Date()), 1000);
                 return () => clearInterval(clockTimer);
             }, []);
+
+            // Jadwal otomatis mengikuti jam lokal laptop: tidur 20.00–06.59, kerja 07.00–19.59.
+            // Perintah manual tetap bisa dipakai dan tidak ditimpa sampai pergantian periode berikutnya.
+            useEffect(() => {
+                const hour = laptopClock.getHours();
+                const isNight = hour >= 20 || hour < 7;
+                // Sinkronkan juga seluruh pencahayaan/langit 3D dengan jam laptop.
+                setDarkMode(isNight);
+                const dateKey = `${laptopClock.getFullYear()}-${laptopClock.getMonth()}-${laptopClock.getDate()}`;
+                const slotKey = `${dateKey}-${isNight ? 'sleep' : 'work'}`;
+                if (autoScheduleKey === slotKey) return;
+                setAutoScheduleKey(slotKey);
+                setAgents(prev => prev.map((agent, idx) => {
+                    if (isNight) {
+                        const row = idx < 10 ? 0 : 1;
+                        const col = idx < 10 ? idx : idx - 10;
+                        const dest = { floor: 2, x: -16.2 + col * 3.5, z: row === 0 ? -9.2 : -4.2, ry: 0, posture: 'sleep', label: 'Tidur otomatis (jadwal malam)', bubble: '💤 Tidur' };
+                        return { ...agent, manualDestination: dest, state: 'Idle', currentTask: 'Istirahat otomatis sesuai jam laptop' };
+                    }
+                    const dest = { floor: 1, x: agent.deskPos.x, z: agent.deskPos.z, ry: agent.deskPos.ry || 0, posture: 'sit', label: 'Kembali bekerja (jadwal siang)', bubble: '💻 Kembali bekerja' };
+                    return { ...agent, manualDestination: dest, state: 'Working', currentTask: 'Bekerja otomatis sesuai jam laptop' };
+                }));
+                setActiveFloor(isNight ? 2 : 1);
+                logActivity(isNight ? 'Jadwal otomatis: seluruh agent masuk waktu istirahat (20.00–07.00).' : 'Jadwal otomatis: seluruh agent kembali bekerja (07.00–20.00).', 'system');
+            }, [laptopClock, autoScheduleKey]);
 
             useEffect(() => {
                 const t = setInterval(() => setIdleTick(c => c + 1), 28000);
@@ -2165,17 +2218,72 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 setAgents(prev=>prev.map(a=>a.id===agentId?{...a,manualDestination:dest,state:'Idle',currentTask:dest.label}:a));
                 setActiveFloor(dest.floor); logActivity(`${agent.name} diarahkan ke ${dest.label}.`,'agent');
             };
+            const getCEOProximity = (radius = 3.6) => {
+                const ceo = agents.find(a => a.id === 'nadzar-ceo');
+                if (!ceo) return [];
+                const cp = agentPositionsRef.current['nadzar-ceo'] || ceo.manualDestination || { floor: 1, x: ceo.deskPos.x, z: ceo.deskPos.z };
+                return agents.filter(a => {
+                    if (a.id === 'nadzar-ceo') return false;
+                    const ap = agentPositionsRef.current[a.id] || a.manualDestination || { floor: 1, x: a.deskPos.x, z: a.deskPos.z };
+                    return (ap.floor || 1) === (cp.floor || 1) && Math.hypot(ap.x - cp.x, ap.z - cp.z) <= radius;
+                }).sort((a,b) => {
+                    const ap=agentPositionsRef.current[a.id] || a.manualDestination || {x:a.deskPos.x,z:a.deskPos.z};
+                    const bp=agentPositionsRef.current[b.id] || b.manualDestination || {x:b.deskPos.x,z:b.deskPos.z};
+                    return Math.hypot(ap.x-cp.x,ap.z-cp.z)-Math.hypot(bp.x-cp.x,bp.z-cp.z);
+                });
+            };
             const swingRacket = () => {
-                const victim=agents.find(a=>a.id===manualAgentId && a.id!=='nadzar-ceo'); if(!victim) return;
-                setAgents(prev=>prev.map(a=>a.id===victim.id?{...a,dizzyUntil:Date.now()+2600,currentTask:'Pusing setelah kena pukul raket CEO'}:a.id==='nadzar-ceo'?{...a,swingUntil:Date.now()+650}:a));
-                logActivity(`CEO mengayunkan raket ke arah ${victim.name}. ${victim.name} langsung pusing!`,'agent');
-                setTimeout(()=>setAgents(prev=>prev.map(a=>a.id===victim.id?{...a,dizzyUntil:0,currentTask:'Kembali beraktivitas'}:a)),2700);
+                const nearby = getCEOProximity(3.8);
+                const victim = nearby[0];
+                if (!victim) { logActivity('Tidak ada agent dalam jarak pukul CEO (3,8 meter). Dekati agent terlebih dahulu.','system'); return; }
+                const until = Date.now() + 2800;
+                setAgents(prev=>prev.map(a=>a.id===victim.id?{...a,dizzyUntil:until,currentTask:'Pusing setelah terkena ayunan raket CEO',manualDestination:{...(a.manualDestination||{floor:1,x:a.deskPos.x,z:a.deskPos.z}),posture:'stand',bubble:'💫 Aduh! Kena pukul raket CEO!'}}:a.id==='nadzar-ceo'?{...a,swingUntil:Date.now()+700}:a));
+                logActivity(`💥 CEO memukul ${victim.name} dari jarak dekat. Agent langsung sempoyongan!`,'agent');
+                setTimeout(()=>setAgents(prev=>prev.map(a=>a.id===victim.id?{...a,dizzyUntil:0,currentTask:'Melanjutkan aktivitas'}:a)),2900);
             };
             const nudgeCEO = (dx,dz) => { const ceo=agents.find(a=>a.id==='nadzar-ceo'); if(!ceo)return; const cur=ceo.manualDestination||{floor:1,x:ceo.deskPos.x,z:ceo.deskPos.z}; const next={floor:cur.floor,x:Math.max(-21,Math.min(21,cur.x+dx)),z:Math.max(-13,Math.min(13,cur.z+dz)),ry:Math.atan2(dx,dz),posture:'stand',label:'CEO bergerak manual',bubble:'👑 CEO sedang bergerak'}; setAgents(prev=>prev.map(a=>a.id==='nadzar-ceo'?{...a,manualDestination:next,state:'Idle',currentTask:'Digerakkan langsung oleh CEO'}:a)); setActiveFloor(next.floor); };
-            const offerCoffee = () => { if(manualAgentId==='nadzar-ceo') return; moveAgentTo(manualAgentId,'coffee'); logActivity(`CEO menawarkan kopi kepada ${agents.find(a=>a.id===manualAgentId)?.name}.`,'agent'); };
+
+            // Keyboard: WASD/arrow = gerak CEO, H = panel kanan/fullscreen, M = Director Mode,
+            // G = jalankan tujuan terpilih, K = kerja, Z = tidur, C = kopi, P = aksi raket.
+            // [ dan ] = pindah pilihan agent, 1/2 = pindah lantai.
+            useEffect(() => {
+                const onKeyDown = (e) => {
+                    const tag = (e.target?.tagName || '').toLowerCase();
+                    if (['input','textarea','select'].includes(tag) || e.target?.isContentEditable) return;
+                    const key = e.key.toLowerCase();
+                    const moves = { arrowup:[0,-1.8], w:[0,-1.8], arrowdown:[0,1.8], s:[0,1.8], arrowleft:[-1.8,0], a:[-1.8,0], arrowright:[1.8,0], d:[1.8,0] };
+                    if (moves[key]) { e.preventDefault(); nudgeCEO(...moves[key]); }
+                    else if (key === 'h') setRightPanelOpen(v => !v);
+                    else if (key === 'm') setDirectorPanelOpen(v => !v);
+                    else if (key === '1') setActiveFloor(1);
+                    else if (key === '2') setActiveFloor(2);
+                    else if (key === 'g') moveAgentTo(manualAgentId, manualPlace);
+                    else if (key === 'k') moveAgentTo(manualAgentId, 'desk');
+                    else if (key === 'z') moveAgentTo(manualAgentId, 'sleep');
+                    else if (key === 'c') offerCoffee();
+                    else if (key === 'p') swingRacket();
+                    else if (key === '[' || key === ']') {
+                        const current = agents.findIndex(a => a.id === manualAgentId);
+                        const next = (current + (key === ']' ? 1 : -1) + agents.length) % agents.length;
+                        setManualAgentId(agents[next].id);
+                    }
+                };
+                window.addEventListener('keydown', onKeyDown);
+                return () => window.removeEventListener('keydown', onKeyDown);
+            }, [agents, manualAgentId, manualPlace]);
+            const offerCoffee = () => {
+                const nearby = getCEOProximity(4.5);
+                if (!nearby.length) { logActivity('Belum ada agent di dekat CEO untuk ditawari kopi. Dekati agent terlebih dahulu.','system'); return; }
+                const recipient = nearby[0];
+                const until = Date.now() + 4200;
+                setAgents(prev=>prev.map(a=>a.id===recipient.id?{...a,coffeeUntil:until,currentTask:'Menerima kopi dari CEO ☕',manualDestination:{...(a.manualDestination||{floor:1,x:a.deskPos.x,z:a.deskPos.z}),posture:'stand',bubble:'☕ Terima kasih Bos! Kopi dulu'}}:a.id==='nadzar-ceo'?{...a,coffeeOfferUntil:Date.now()+1000}:a));
+                logActivity(`☕ CEO menawarkan kopi kepada ${recipient.name}. Agent langsung berhenti sejenak untuk menerima kopi.`,'agent');
+                setTimeout(()=>setAgents(prev=>prev.map(a=>a.id===recipient.id?{...a,coffeeUntil:0,currentTask:'Melanjutkan aktivitas'}:a)),4300);
+            };
             const CEO_ACTION_DESTINATIONS = [
                 {value:'desk',label:'Meja kerja'},{value:'sleep',label:'Tidur / kamar lantai 2'},{value:'coffee',label:'Pantry / kopi'},{value:'galon',label:'Pantry / air minum'},
                 {value:'smoking_room',label:'Smoking room (pria)'},{value:'toilet_male',label:'Toilet pria'},{value:'toilet_female',label:'Toilet wanita'},
+                {value:'bakso',label:'Bakso Pak Kumis'},{value:'es_teh_desa',label:'Es Teh Desa'},{value:'fotokopi',label:'Fotokopi AICA'},
                 {value:'f2_cafebar',label:'Cafe lantai 2'},{value:'f2_theater',label:'Home theater lantai 2'},{value:'gazebo',label:'Gazebo taman'}
             ];
 
@@ -2338,6 +2446,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                 graphicsSettings={graphicsSettings}
                                 simulationPaused={simulationPaused}
                                 onFpsUpdate={setCurrentFps}
+                                agentPositionsRef={agentPositionsRef}
                             />
 
                             {/* TOP-LEFT ROOM LEGEND & QUICK MOBILE ACTIONS */}
@@ -2384,9 +2493,9 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                             <span></span><button onClick={()=>nudgeCEO(0,-1.8)} className="rounded bg-slate-700 py-1">↑</button><span></span>
                                             <button onClick={()=>nudgeCEO(-1.8,0)} className="rounded bg-slate-700 py-1">←</button><button onClick={()=>nudgeCEO(0,1.8)} className="rounded bg-slate-700 py-1">↓</button><button onClick={()=>nudgeCEO(1.8,0)} className="rounded bg-slate-700 py-1">→</button>
                                         </div>
-                                        <div className="text-[9px] text-slate-500">Gunakan tombol arah untuk menggerakkan CEO bertahap.</div>
+                                        <div className="text-[9px] text-slate-500">WASD/←↑↓→: gerak CEO • H: fullscreen/panel • M: Director • G: Go • K: kerja • Z: tidur • C: kopi • P: pukul • [ ]: pilih agent • 1/2: lantai.</div>
                                     </div>}
-                                    <div className="text-[9px] text-slate-500">Waktu mengikuti jam laptop. Perintah tujuan mengunci tujuan agent sampai diperintah lagi.</div>
+                                    <div className="text-[9px] text-slate-500">Jadwal otomatis: 20.00–07.00 tidur, 07.00–20.00 kerja (mengikuti jam lokal laptop). Perintah manual berlaku sampai pergantian jadwal berikutnya.</div>
                                     </div>}
                                 </div>
                             </div>
@@ -2429,6 +2538,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                         🔄 Reset
                                     </button>
                                     <button onClick={() => setSideTab('Mission')} className="px-2.5 py-1.5 rounded-lg bg-indigo-600/80 hover:bg-indigo-500 text-white font-bold">🧭 Mission Control</button>
+                                    <button onClick={() => setRightPanelOpen(v => !v)} className="px-2.5 py-1.5 rounded-lg bg-sky-600/90 hover:bg-sky-500 text-white font-bold" title="Tampilkan/sembunyikan panel kanan">{rightPanelOpen ? '⛶ Fullscreen' : '▣ Tampilkan Panel'}</button>
                                     <button onClick={() => { setSimulationPaused(v => !v); logActivity(simulationPaused ? 'Simulasi kantor dilanjutkan.' : 'Simulasi kantor dijeda.'); }} className={`px-2.5 py-1.5 rounded-lg font-medium ${simulationPaused ? 'bg-amber-500 text-slate-950' : 'text-slate-300 hover:bg-slate-800'}`}>{simulationPaused ? '▶ Lanjut Simulasi' : '⏸ Pause'}</button>
                                     {/* Mobile Drawer Toggle Button */}
                                     <button
@@ -2443,8 +2553,8 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
 
                         {/* RIGHT / MOBILE SLIDE-OVER: FORUM DISKUSI 19 AGENT & REKAP SEKRE + CHAT */}
                         <aside
-                            className={`w-full lg:w-[460px] shrink-0 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col z-30 transition-all duration-200 ${
-                                mobilePanelOpen ? 'h-[64vh] lg:h-full' : 'h-0 lg:h-full overflow-hidden'
+                            className={`${rightPanelOpen ? 'w-full lg:w-[460px] opacity-100' : 'w-0 opacity-0 pointer-events-none'} shrink-0 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col z-30 transition-all duration-200 overflow-hidden ${
+                                mobilePanelOpen ? 'h-[64vh] lg:h-full' : 'h-0 lg:h-full'
                             }`}
                         >
                             {/* Navigation Tabs */}
@@ -2470,7 +2580,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                                 </div>
                                 <button
                                     onClick={() => setMobilePanelOpen(false)}
-                                    className="lg:hidden p-1.5 rounded-lg bg-slate-800 text-slate-300"
+                                    className="p-1.5 rounded-lg bg-slate-800 text-slate-300" title="Sembunyikan panel kanan"
                                 >
                                     <Icon name="chevron-down" className="w-4 h-4" />
                                 </button>
