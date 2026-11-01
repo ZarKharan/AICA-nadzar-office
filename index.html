@@ -563,10 +563,19 @@
             'gemini-1.5-flash'
         ];
 
+        // SERVER-INJECTED VERCEL ENVIRONMENTS (Will be populated if set in Vercel Project Settings)
+        const SERVER_ENV_KEY = ""; 
+        const SERVER_ENV_MODEL = "gemini-3.8-flash";
+
         async function fetchGeminiWithFallback(contents, systemText, customApiKey, preferredModel) {
-            const envKey = "";
-            const activeKey = (customApiKey && customApiKey.trim()) ? customApiKey.trim() : envKey;
-            const primary = (preferredModel && preferredModel.trim()) ? preferredModel.trim() : 'gemini-3.8-flash';
+            const browserKey = (customApiKey && customApiKey.trim()) ? customApiKey.trim() : '';
+            const activeKey = browserKey || SERVER_ENV_KEY;
+
+            if (!activeKey) {
+                throw new Error('API Key Gemini belum disetel. Masukkan lewat tombol "🔑 API Key" di kanan atas atau atur GEMINI_API_KEY di Environment Variables Vercel.');
+            }
+
+            const primary = (preferredModel && preferredModel.trim()) ? preferredModel.trim() : (SERVER_ENV_MODEL || 'gemini-3.8-flash');
 
             const candidateModels = [
                 primary,
@@ -1830,7 +1839,7 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
             ]);
             // Modals: API Key Setup, Model Selector & Vercel Deployment Guide
             const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('nadzar_gemini_key') || '');
-            const [preferredModel, setPreferredModel] = useState(() => localStorage.getItem('nadzar_gemini_model') || 'gemini-3.8-flash');
+            const [preferredModel, setPreferredModel] = useState(() => localStorage.getItem('nadzar_gemini_model') || (SERVER_ENV_MODEL || 'gemini-3.8-flash'));
             const [showApiModal, setShowApiModal] = useState(false);
             const [showVercelModal, setShowVercelModal] = useState(false);
 
