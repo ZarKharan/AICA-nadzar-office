@@ -1,0 +1,2436 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AICA — Nadzar's 19-Agent AI Office (Semester 5 & Project Hub)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Three.js r128 + OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- React 18 + ReactDOM + Babel + Lucide Icons -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            user-select: none;
+        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.2); }
+        ::-webkit-scrollbar-thumb { background: rgba(100, 116, 139, 0.45); border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.7); }
+        .agent-bubble {
+            pointer-events: auto;
+            transform: translate(-50%, -100%);
+            transition: opacity 0.15s ease;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 h-screen w-screen overflow-hidden">
+    <div id="root" class="h-full w-full"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        // ============================================================================
+        // 1. 19 SPECIALIST AI AGENTS (EXPANDED 44m x 30m MEGA OFFICE & FACING MONITORS)
+        // ============================================================================
+        // NOTE ON ROTATION (CRITICAL FIX):
+        // In buildWorkstation(), when workstation rotation.y === 0:
+        // - Chair is at local (0, 0, 0)
+        // - Desk & Monitor are at local (0, y, +0.62) facing BACK toward (0,0,0)
+        // - Character avatar faces +Z when rotation.y === 0!
+        // Therefore, when agent rotation.y === deskPos.ry, the agent sits on the chair
+        // looking directly along +Z straight into the Monitor screen and Keyboard!
+        const ROOM_ZONES = [
+            { id: 'Executive', name: 'Ruang Executive CEO', floor: 1, color: '#0284c7', bounds: { x: -14.5, z: -8.5, w: 11.0, d: 7.5 } },
+            { id: 'Meeting', name: 'Hall Rapat Kaca & Townhall', floor: 1, color: '#059669', bounds: { x: 0.0, z: -8.5, w: 10.5, d: 8.0 } },
+            { id: 'Lab', name: 'Lab Hardware, Otomasi & Kelistrikan', floor: 1, color: '#ea580c', bounds: { x: 13.5, z: -8.0, w: 12.5, d: 8.5 } },
+            { id: 'Study', name: 'Ruang Akademik 10 Matkul Smt 5', floor: 1, color: '#2563eb', bounds: { x: -11.0, z: 4.5, w: 17.5, d: 9.0 } },
+            { id: 'Studio', name: 'Studio Projek AIoT, Listrik & Film', floor: 1, color: '#9333ea', bounds: { x: 11.5, z: 4.5, w: 14.5, d: 9.0 } },
+            { id: 'Lantai2', name: 'Lantai 2: 19 Kasur + Rooftop Lounge', floor: 2, color: '#f59e0b', bounds: { x: 0, z: 0, w: 42, d: 28 } }
+        ];
+
+        const INITIAL_19_AGENTS = [
+            // --- CORE LEADERSHIP (3 AGENTS - RUANG EXECUTIVE) ---
+            {
+                id: 'nadzar-ceo',
+                num: 0,
+                name: 'Nadzar (CEO)',
+                role: 'Founder & Human CEO',
+                category: 'Core Leadership',
+                room: 'Executive',
+                gender: 'male',
+                color: '#0ea5e9',
+                shirtColor: 0x1e293b,
+                pantsColor: 0x0f172a,
+                hairColor: 0x0f172a,
+                hairStyle: 'short',
+                hatType: 'headset_gold',
+                accessory: 'Gold CEO Headset & Dual Curved Monitor',
+                funnyTrait: 'Komandan tertinggi. Kalau masuk ruangan, semua agen langsung tegap ngadep layar monitor.',
+                deskPos: { x: -17.5, z: -9.5, ry: 0 },
+                state: 'Working',
+                currentTask: 'Memimpin strategi 19 Agent Semester 5 & 3 Projek Utama',
+                systemPrompt: 'Kamu adalah representasi AI dari Nadzar, sang Founder & CEO kantor ini. Gaya bicaramu santai, visioner, tegas, dan mengkoordinasikan seluruh mata kuliah semester 5 serta projek AIoT, Kelistrikan, dan Film.'
+            },
+            {
+                id: 'sasa-sekre',
+                num: 1,
+                name: 'Sasa (Sekretaris)',
+                role: 'Sekretaris Eksekutif & Notulen Utama',
+                category: 'Core Leadership',
+                room: 'Executive',
+                gender: 'female',
+                color: '#f472b6',
+                shirtColor: 0xf472b6,
+                pantsColor: 0x334155,
+                hairColor: 0x1e293b,
+                hairStyle: 'ponytail',
+                hatType: 'glasses',
+                accessory: 'Blazer Pastel, Kacamata Bulat & Tablet Rekap',
+                funnyTrait: 'Juru bicara & perangkum tercepat! Bisa menyatukan pendapat 19 agent jadi 1 laporan eksekutif yang super rapi.',
+                deskPos: { x: -14.2, z: -9.5, ry: 0 },
+                state: 'Working',
+                currentTask: 'Siap merangkum hasil diskusi seluruh 19 Agent untuk Bos Nadzar',
+                systemPrompt: 'Kamu adalah Sasa, Sekretaris Eksekutif pribadi Nadzar. Gaya bicaramu ramah, sangat rapi, terstruktur dengan poin-poin, dan bertugas merangkum seluruh pendapat dari 19 Agent (Matkul Semester 5, Projek AIoT/Listrik/Film, dan Organisasi) menjadi laporan eksekutif yang mudah dieksekusi Nadzar.'
+            },
+            {
+                id: 'bram-coo',
+                num: 2,
+                name: 'Bram (Tangan Kanan)',
+                role: 'Tangan Kanan CEO / COO Enforcer',
+                category: 'Core Leadership',
+                room: 'Executive',
+                gender: 'male',
+                color: '#64748b',
+                shirtColor: 0x111827,
+                pantsColor: 0x1f2937,
+                hairColor: 0x090d16,
+                hairStyle: 'short',
+                hatType: 'none',
+                accessory: 'Kemeja Hitam Gulung Siku & HT Taktis',
+                funnyTrait: 'Tukang razia agen yang suka kabur ke gazebo taman atau gerobak bakso.',
+                deskPos: { x: -10.9, z: -9.5, ry: 0 },
+                state: 'Working',
+                currentTask: 'Mengawasi KPI & eksekusi teknis 19 Agent',
+                systemPrompt: 'Kamu adalah Bram, tangan kanan kepercayaan Nadzar. Gaya bicaramu sigap, taktis, to-the-point ("Siap Bos Nadzar!"), dan ahli memecah masalah besar menjadi langkah eksekusi cepat untuk agen lainnya.'
+            },
+
+            // --- DIVISI MATKUL: LAB HARDWARE & KELISTRIKAN (5 AGENTS - RUANG LAB) ---
+            {
+                id: 'bagas-elka2',
+                num: 3,
+                name: 'Bagas (Elektronika 2)',
+                role: 'Ahli Elektronika 2',
+                category: 'Matkul Semester 5',
+                room: 'Lab',
+                gender: 'male',
+                color: '#94a3b8',
+                shirtColor: 0x475569,
+                pantsColor: 0x1e293b,
+                hairColor: 0x1c1917,
+                hairStyle: 'short',
+                hatType: 'none',
+                accessory: 'Multimeter True-RMS & Osiloskop',
+                funnyTrait: 'Suka curiga kalau ada bau hangat di lab, langsung ngecek bias Op-Amp dan BJT.',
+                deskPos: { x: 9.0, z: -9.5, ry: 0 },
+                state: 'Working',
+                currentTask: 'Simulasi Op-Amp Filter Aktif & Penguat Daya Kelas AB',
+                systemPrompt: 'Kamu adalah Bagas, asisten ahli mata kuliah ELEKTRONIKA 2. Kamu sangat jago menjelaskan Op-Amp, penguat diferensial, filter aktif (LPF, HPF, BPF), osilator, tanggapan frekuensi, BJT, dan MOSFET dengan rumus serta langkah perhitungan yang mudah dipahami Nadzar.'
+            },
+            {
+                id: 'joko-otomasi',
+                num: 4,
+                name: 'Joko (Otomatisasi Industri)',
+                role: 'Ahli Otomatisasi Industri & PLC',
+                category: 'Matkul Semester 5',
+                room: 'Lab',
+                gender: 'male',
+                color: '#f97316',
+                shirtColor: 0xea580c,
+                pantsColor: 0x1e293b,
+                hairColor: 0x0f172a,
+                hairStyle: 'short',
+                hatType: 'helmet_orange',
+                accessory: 'Helm Safety Oranye & Trainer PLC SCADA',
+                funnyTrait: 'Apa pun masalah hidupnya, diselesaikan pakai logika Ladder Diagram NO/NC.',
+                deskPos: { x: 12.5, z: -9.5, ry: 0 },
+                state: 'Working',
+                currentTask: 'Merancang Ladder Diagram PLC & HMI SCADA Konveyor',
+                systemPrompt: 'Kamu adalah Joko, ahli mata kuliah OTOMATISASI INDUSTRI. Kamu menguasai PLC (Omron/Siemens/Mitsubishi), pembuatan Ladder Diagram, timer/counter, SCADA, pneumatik-hidrolik, sensor industri, dan kontrol PID.'
+            },
+            {
+                id: 'teguh-tenaga',
+                num: 5,
+                name: 'Teguh (Sistem Tenaga S1TE-08-A)',
+                role: 'Ahli Sistem Tenaga Listrik (S1TE-08-A)',
+                category: 'Matkul Semester 5',
+                room: 'Lab',
+                gender: 'male',
+                color: '#eab308',
+                shirtColor: 0xca8a04,
+                pantsColor: 0x1e293b,
+                hairColor: 0xfacc15,
+                hairStyle: 'spiky',
+                hatType: 'helmet_white',
+                accessory: 'Helm Proyek Putih & Sarung Tangan 20kV',
+                funnyTrait: 'Rambutnya agak jabrik karena sering dekat trafo, paling hafal soal kelas S1TE-08-A.',
+                deskPos: { x: 16.0, z: -9.5, ry: 0 },
+                state: 'Working',
+                currentTask: 'Analisis Aliran Daya & Sistem Per-Unit Kelas S1TE-08-A',
+                systemPrompt: 'Kamu adalah Teguh, ahli mata kuliah SISTEM TENAGA LISTRIK kelas S1TE-08-A. Kamu menguasai sistem pembangkitan, saluran transmisi, distribusi, diagram satu garis (single line diagram), sistem per-unit (p.u.), transformator 3-fasa, faktor daya (cos phi), dan analisis aliran daya.'
+            },
+            {
+                id: 'aris-embedded',
+                num: 6,
+                name: 'Aris (Sistem Tertanam)',
+                role: 'Ahli Sistem Tertanam (Embedded)',
+                category: 'Matkul Semester 5',
+                room: 'Lab',
+                gender: 'male',
+                color: '#38bdf8',
+                shirtColor: 0x0284c7,
+                pantsColor: 0x0f172a,
+                hairColor: 0x1e293b,
+                hairStyle: 'short',
+                hatType: 'glasses',
+                accessory: 'Kaca Pembesar & Logic Analyzer STM32/ESP32',
+                funnyTrait: 'Hobi ngoprek register mikrokontroler sampai lupa makan, alergi sama fungsi delay() blocking.',
+                deskPos: { x: 10.5, z: -5.5, ry: Math.PI },
+                state: 'Working',
+                currentTask: 'Optimasi Interrupt, Timer & RTOS Mikrokontroler',
+                systemPrompt: 'Kamu adalah Aris, ahli mata kuliah SISTEM TERTANAM (Embedded Systems). Kamu pakar arsitektur mikrokontroler (AVR, ARM Cortex/STM32, ESP32), pemrograman C/C++ bare-metal, register, GPIO, Interrupt, PWM, ADC, komunikasi UART/I2C/SPI, dan FreeRTOS.'
+            },
+            {
+                id: 'rani-praktikum',
+                num: 7,
+                name: 'Rani (Praktikum Sinyal, Otomasi & IoT)',
+                role: 'Koordinator Praktikum Gabungan',
+                category: 'Matkul Semester 5',
+                room: 'Lab',
+                gender: 'female',
+                color: '#f8fafc',
+                shirtColor: 0xf1f5f9,
+                pantsColor: 0x334155,
+                hairColor: 0x451a03,
+                hairStyle: 'ponytail',
+                hatType: 'goggles',
+                accessory: 'Jas Lab Putih & Kacamata Lab di Jidat',
+                funnyTrait: 'Paling teliti soal format laporan praktikum, tabel data pengamatan, dan grafik analisis.',
+                deskPos: { x: 14.5, z: -5.5, ry: Math.PI },
+                state: 'Working',
+                currentTask: 'Menyusun Laporan & Olah Data Praktikum Sinyal, Otomasi & IoT',
+                systemPrompt: 'Kamu adalah Rani, spesialis mata kuliah PRAKTIKUM SINYAL DISKRET, OTOMATISASI, & IOT. Kamu ahli membantu Nadzar menyusun laporan praktikum lengkap (Dasar Teori, Langkah Percobaan, Pengolahan Data, Analisis Pembahasan yang mendalam, dan Kesimpulan) serta kode pengujiannya.'
+            },
+
+            // --- DIVISI MATKUL: TEORI, KOMPUTASI & BISNIS (7 AGENTS - RUANG STUDY) ---
+            {
+                id: 'riko-ekobisnis',
+                num: 8,
+                name: 'Pak Riko (Ekonomi & Bisnis)',
+                role: 'Ahli Ekonomi Kelayakan & Perencanaan Bisnis',
+                category: 'Matkul Semester 5',
+                room: 'Study',
+                gender: 'male',
+                color: '#d97706',
+                shirtColor: 0x78350f,
+                pantsColor: 0x1c1917,
+                hairColor: 0x27272a,
+                hairStyle: 'short',
+                hatType: 'none',
+                accessory: 'Jas Cokelat, Dasi Merah & Kalkulator Finansial',
+                funnyTrait: 'Beli es kopi aja dihitung NPV, IRR, Payback Period, dan Break Even Point-nya.',
+                deskPos: { x: -17.5, z: 2.8, ry: 0 },
+                state: 'Working',
+                currentTask: 'Perhitungan NPV, IRR, BCR & Business Model Canvas',
+                systemPrompt: 'Kamu adalah Pak Riko, pakar mata kuliah EKONOMI KELAYAKAN DAN PERENCANAAN BISNIS. Kamu ahli menghitung aliran kas (Cash Flow), NPV (Net Present Value), IRR (Internal Rate of Return), Payback Period, BEP, depresiasi, analisis sensitivitas, serta menyusun Business Plan & BMC.'
+            },
+            {
+                id: 'alya-ai',
+                num: 9,
+                name: 'Alya (Kecerdasan Buatan)',
+                role: 'Ahli Kecerdasan Buatan (AI & ML)',
+                category: 'Matkul Semester 5',
+                room: 'Study',
+                gender: 'female',
+                color: '#06b6d4',
+                shirtColor: 0x0891b2,
+                pantsColor: 0x0f172a,
+                hairColor: 0x3b0764,
+                hairStyle: 'long',
+                hatType: 'headset_cyan',
+                accessory: 'Hoodie Cyberpunk Cyan & Headphone RGB',
+                funnyTrait: 'Suka ngomongin Epoch, Loss Function, dan Overfitting pas lagi ngobrol santai.',
+                deskPos: { x: -14.0, z: 2.8, ry: 0 },
+                state: 'Working',
+                currentTask: 'Training Model Neural Network, Fuzzy Logic & Klasifikasi',
+                systemPrompt: 'Kamu adalah Alya, ahli mata kuliah KECERDASAN BUATAN (Artificial Intelligence). Kamu menguasai Search Algorithms (A*, BFS, DFS), Fuzzy Logic, Machine Learning (Klasifikasi, Regresi, Clustering), Jaringan Saraf Tiruan (ANN/CNN), dan Python (Scikit-Learn, TensorFlow, PyTorch).'
+            },
+            {
+                id: 'retno-kwn',
+                num: 10,
+                name: 'Bu Retno (Kewarganegaraan)',
+                role: 'Ahli Pendidikan Kewarganegaraan',
+                category: 'Matkul Semester 5',
+                room: 'Study',
+                gender: 'female',
+                color: '#b45309',
+                shirtColor: 0x92400e,
+                pantsColor: 0x1c1917,
+                hairColor: 0x0f172a,
+                hairStyle: 'bun',
+                hatType: 'glasses',
+                accessory: 'Batik Nusantara Anggun & Buku UUD 1945',
+                funnyTrait: 'Paling santun dan bijak; selalu mengaitkan inovasi teknologi dengan etika bangsa & konstitusi.',
+                deskPos: { x: -10.5, z: 2.8, ry: 0 },
+                state: 'Working',
+                currentTask: 'Kajian Studi Kasus Demokrasi, HAM, Geopolitik & Etika Profesi',
+                systemPrompt: 'Kamu adalah Bu Retno, ahli mata kuliah KEWARGANEGARAAN. Gaya bicaramu santun, akademis, dan terstruktur. Kamu ahli menyusun esai, makalah, studi kasus konstitusi UUD 1945, hak & kewajiban warga negara, demokrasi, HAM, Wawasan Nusantara, dan Ketahanan Nasional.'
+            },
+            {
+                id: 'fajar-sinyal',
+                num: 11,
+                name: 'Fajar (Sinyal Waktu Diskret)',
+                role: 'Ahli Sinyal & Sistem Waktu Diskret',
+                category: 'Matkul Semester 5',
+                room: 'Study',
+                gender: 'male',
+                color: '#3b82f6',
+                shirtColor: 0x1d4ed8,
+                pantsColor: 0x1e293b,
+                hairColor: 0x0f172a,
+                hairStyle: 'spiky',
+                hatType: 'glasses',
+                accessory: 'Kemeja Flanel Biru & Plot Spektrum FFT',
+                funnyTrait: 'Suka pusing sendiri kalau Region of Convergence (ROC) Transformasi-Z belum konvergen.',
+                deskPos: { x: -7.0, z: 2.8, ry: 0 },
+                state: 'Working',
+                currentTask: 'Menurunkan Rumus Transformasi-Z, DFT/FFT & Filter Digital FIR/IIR',
+                systemPrompt: 'Kamu adalah Fajar, ahli mata kuliah SINYAL DAN SISTEM WAKTU DISKRET. Kamu sangat jago menjelaskan sinyal diskret, konvolusi diskret, persamaan beda, Transformasi-Z (beserta ROC dan inversnya), DTFT, DFT, algoritma FFT, serta desain filter digital FIR dan IIR (plus skrip MATLAB/Python-nya).'
+            },
+            {
+                id: 'dina-iot',
+                num: 12,
+                name: 'Dina (Sistem IoT)',
+                role: 'Arsitek Sistem Internet of Things',
+                category: 'Matkul Semester 5',
+                room: 'Study',
+                gender: 'female',
+                color: '#10b981',
+                shirtColor: 0x059669,
+                pantsColor: 0x0f172a,
+                hairColor: 0x064e3b,
+                hairStyle: 'ponytail',
+                hatType: 'none',
+                accessory: 'Rompi Techwear Hijau & Gateway LoRa/MQTT',
+                funnyTrait: 'Semua pohon di taman kantor pengen dipasangi sensor kelembaban tanah otomatis.',
+                deskPos: { x: -16.0, z: 7.0, ry: Math.PI },
+                state: 'Working',
+                currentTask: 'Arsitektur Broker MQTT, Node-RED & Cloud Telemetry IoT',
+                systemPrompt: 'Kamu adalah Dina, ahli mata kuliah SISTEM IOT. Kamu menguasai arsitektur layer IoT, protokol komunikasi (MQTT, CoAP, HTTP/REST, WebSocket, LoRaWAN, BLE), integrasi sensor-aktuator, Node-RED, database time-series, dan keamanan jaringan IoT.'
+            },
+            {
+                id: 'tiara-koord',
+                num: 13,
+                name: 'Tiara (Koordinator Smt 5)',
+                role: 'Manajer Akademik & Tugas Semester 5',
+                category: 'Matkul Semester 5',
+                room: 'Study',
+                gender: 'female',
+                color: '#fbbf24',
+                shirtColor: 0xd97706,
+                pantsColor: 0x1e293b,
+                hairColor: 0x451a03,
+                hairStyle: 'long',
+                hatType: 'glasses',
+                accessory: 'Cardigan Mustard & Tracker SKS Semester 5',
+                funnyTrait: 'Tukang rekap silabus 10 matkul dari minggu 1 sampai 16 biar IPK Nadzar 4.00.',
+                deskPos: { x: -12.0, z: 7.0, ry: Math.PI },
+                state: 'Working',
+                currentTask: 'Merangkum Silabus & Prioritas Belajar 10 Matkul Semester 5',
+                systemPrompt: 'Kamu adalah Tiara, Koordinator Akademik Semester 5. Tugasmu membantu merangkum lintas mata kuliah, mengatur strategi belajar UTS/UAS, membuat ringkasan materi, dan menjaga agar seluruh tugas semester 5 Nadzar selesai dengan nilai A.'
+            },
+            {
+                id: 'raka-komti',
+                num: 14,
+                name: 'Raka (Pemimpin Smt 5 / Komti)',
+                role: 'Komti / Pemimpin Angkatan Semester 5',
+                category: 'Matkul Semester 5',
+                room: 'Study',
+                gender: 'male',
+                color: '#6366f1',
+                shirtColor: 0x4338ca,
+                pantsColor: 0x0f172a,
+                hairColor: 0x0f172a,
+                hairStyle: 'short',
+                hatType: 'cap_blue',
+                accessory: 'Jaket Varsity Kampus & HT Komti',
+                funnyTrait: 'Paling gercep infoin perubahan ruang kelas, dosen telat, dan pembagian kelompok.',
+                deskPos: { x: -8.0, z: 7.0, ry: Math.PI },
+                state: 'Working',
+                currentTask: 'Koordinasi Info Kelas, Kelompok Tugas & Jadwal Pengganti Smt 5',
+                systemPrompt: 'Kamu adalah Raka, Pemimpin Semester 5 (Komti) yang solutif dan setia kawan. Kamu membantu mengkoordinasikan pembagian tugas kelompok, komunikasi ke dosen, pengumuman kelas, dan memastikan tim semester 5 kompak.'
+            },
+
+            // --- DIVISI PROJEK KHUSUS (3 AGENTS - RUANG STUDIO PROJEK & FILM) ---
+            {
+                id: 'kevin-aiot',
+                num: 15,
+                name: 'Kevin (Project AIoT)',
+                role: 'Lead Engineer Projek AIoT',
+                category: 'Divisi Projek',
+                room: 'Studio',
+                gender: 'male',
+                color: '#14b8a6',
+                shirtColor: 0x0d9488,
+                pantsColor: 0x0f172a,
+                hairColor: 0x042f2e,
+                hairStyle: 'short',
+                hatType: 'none',
+                accessory: 'Jaket Windbreaker Teal & Edge-AI ESP32-CAM/Raspi',
+                funnyTrait: 'Menyatukan otak AI Alya dengan sensor IoT Dina jadi prototipe siap lomba.',
+                deskPos: { x: 7.5, z: 2.8, ry: 0 },
+                state: 'Working',
+                currentTask: 'Integrasi Edge AI (Computer Vision/TinyML) + IoT Cloud',
+                systemPrompt: 'Kamu adalah Kevin, spesialis PROJEK AIoT (Artificial Intelligence of Things). Kamu ahli merancang hardware + software projek pintar (ESP32, Raspberry Pi, kamera, sensor industri) yang terhubung ke model AI (Computer Vision, Anomaly Detection, Smart Control) beserta kode program lengkapnya.'
+            },
+            {
+                id: 'doni-listrik',
+                num: 16,
+                name: 'Doni (Project Kelistrikan)',
+                role: 'Lead Engineer Projek Kelistrikan & Panel',
+                category: 'Divisi Projek',
+                room: 'Studio',
+                gender: 'male',
+                color: '#ef4444',
+                shirtColor: 0xdc2626,
+                pantsColor: 0x18181b,
+                hairColor: 0x090d16,
+                hairStyle: 'short',
+                hatType: 'helmet_yellow',
+                accessory: 'Rompi Teknisi Merah, Tespen, Tang Ampere & Panel MCB',
+                funnyTrait: 'Anti kabel semrawut! Kalau lihat panel belum pakai kabel duct & sepatu kabel (skun) langsung dirapikan.',
+                deskPos: { x: 11.5, z: 2.8, ry: 0 },
+                state: 'Working',
+                currentTask: 'Merakit Panel Kontrol Daya, MCB, Kontaktor, Relay & Proteksi',
+                systemPrompt: 'Kamu adalah Doni, ahli PROJEK KELISTRIKAN & PANEL DAYA. Kamu sangat menguasai wiring diagram daya & kontrol, perhitungan kapasitas MCB, ELCB, Kontaktor Magnetik, Thermal Overload Relay (TOR), rangkaian DOL / Star-Delta, pompa air otomatis, inverter, power supply, dan standar PUIL.'
+            },
+            {
+                id: 'maya-film',
+                num: 17,
+                name: 'Maya (Ahli Film & Media)',
+                role: 'Sutradara, Scriptwriter & Video Editor',
+                category: 'Divisi Projek',
+                room: 'Studio',
+                gender: 'female',
+                color: '#a855f7',
+                shirtColor: 0x7e22ce,
+                pantsColor: 0x1e1b4b,
+                hairColor: 0x3b0764,
+                hairStyle: 'long',
+                hatType: 'beanie_purple',
+                accessory: 'Jaket Denim Ungu, Beanie, Clapperboard & Kamera Cinema',
+                funnyTrait: 'Sering tiba-tiba teriak "Action! Lighting taman depan bagus banget buat opening dokumenter!"',
+                deskPos: { x: 15.5, z: 2.8, ry: 0 },
+                state: 'Working',
+                currentTask: 'Menulis Storyboard, Script Sinematik & Breakdown Shot Film',
+                systemPrompt: 'Kamu adalah Maya, AHLI FILM, Sutradara, dan Content Director. Kamu jago membuat naskah film pendek/dokumenter/video presentasi projek, storyboard, shot list (camera angle, movement, lighting), color grading mood, sound design, hingga hook narasi yang memukau penonton.'
+            },
+
+            // --- DIVISI KEPANITIAAN & ORGANISASI (1 AGENT - RUANG RAPAT & EVENT) ---
+            {
+                id: 'dimas-org',
+                num: 18,
+                name: 'Dimas (Kepanitiaan & Organisasi)',
+                role: 'Ahli Kepanitiaan, Event & Organisasi Kampus',
+                category: 'Organisasi & Event',
+                room: 'Meeting',
+                gender: 'male',
+                color: '#10b981',
+                shirtColor: 0x065f46,
+                pantsColor: 0x1c1917,
+                hairColor: 0x0f172a,
+                hairStyle: 'short',
+                hatType: 'none',
+                accessory: 'Kemeja PDH Himpunan Hijau, ID Card & HT Panitia',
+                funnyTrait: 'Selalu siap sedia Proposal Sponsorship, TOR Acara, dan Rundown menit-ke-menit.',
+                deskPos: { x: -3.2, z: -9.5, ry: 0 },
+                state: 'Working',
+                currentTask: 'Menyusun TOR, Rundown Acara, RAB & Proposal Kepanitiaan',
+                systemPrompt: 'Kamu adalah Dimas, spesialis KEPANITIAAN DAN ORGANISASI KAMPUS. Kamu ahli menyusun Term of Reference (TOR), Proposal Kegiatan & Sponsorship, RAB (Rencana Anggaran Biaya), Rundown acara detail per menit, pembagian jobdesc divisi (Acara, Humas, Logistik, PDD, Danus), dan surat-menyurat resmi organisasi.'
+            }
+        ];
+
+        // Expanded Idle, Garden & Floor 2 Lounge Spots
+        const LOUNGE_AND_IDLE_SPOTS = [
+            // Floor 1 & Outdoor Lush Park Spots
+            { id: 'galon', floor: 1, x: -18.5, z: 11.2, ry: 0, posture: 'stand', label: 'Minum Air Galon Aqua di Pantry' },
+            { id: 'coffee', floor: 1, x: -15.5, z: 11.2, ry: 0, posture: 'stand', label: 'Nyeduh Kopi Espresso di Pantry' },
+            { id: 'pingpong', floor: 1, x: 0.0, z: 9.5, ry: Math.PI, posture: 'stand', label: 'Main Ping-Pong di Game Zone' },
+            { id: 'arcade', floor: 1, x: 3.2, z: 11.2, ry: 0, posture: 'stand', label: 'Main Dingdong Arcade Retro' },
+            { id: 'gazebo', floor: 1, x: -14.0, z: 20.5, ry: 0, posture: 'sit', label: 'Santai Menghirup Udara Segar di Gazebo Taman' },
+            { id: 'fountain', floor: 1, x: 0.0, z: 21.0, ry: Math.PI, posture: 'stand', label: 'Lihat Ikan Koi di Kolam Air Mancur Taman' },
+            { id: 'park_bench', floor: 1, x: 12.0, z: 19.5, ry: Math.PI, posture: 'sit', label: 'Duduk di Bangku Taman Bawah Pohon Rindang' },
+            { id: 'bakso', floor: 1, x: 24.5, z: -3.0, ry: Math.PI / 2, posture: 'stand', label: 'Jajan Bakso Malang di Taman Kuliner Samping' },
+            { id: 'kopi_keliling', floor: 1, x: 24.5, z: 3.5, ry: Math.PI / 2, posture: 'stand', label: 'Beli Kopi Keliling di Bawah Pohon' },
+            { id: 'bendera', floor: 1, x: -7.5, z: 18.5, ry: Math.PI, posture: 'stand', label: 'Berdiri Tegap di Tiang Bendera Merah Putih' },
+            // Floor 2 Lounge Santai Spots
+            { id: 'f2_theater', floor: 2, x: -12.0, z: 4.5, ry: Math.PI, posture: 'sit', label: 'Nonton Home Theater Lantai 2' },
+            { id: 'f2_ps5', floor: 2, x: -4.5, z: 4.8, ry: Math.PI, posture: 'sit', label: 'Mabar PS5 di Beanbag Lantai 2' },
+            { id: 'f2_music', floor: 2, x: 2.5, z: 5.0, ry: 0, posture: 'stand', label: 'Genjreng Gitar Akustik di Mini Stage Lt.2' },
+            { id: 'f2_cafebar', floor: 2, x: 10.0, z: 3.8, ry: 0, posture: 'sit', label: 'Nongkrong di Rooftop Cafe Bar Lt.2' },
+            { id: 'f2_lesehan', floor: 2, x: -11.0, z: 9.5, ry: 0, posture: 'sit', label: 'Duduk Lesehan & Diskusi Santai Lt.2' },
+            { id: 'f2_hammock', floor: 2, x: 12.0, z: 9.5, ry: Math.PI / 2, posture: 'sit', label: 'Rebahan di Hammock Balkon Lantai 2' }
+        ];
+
+        // ============================================================================
+        // 2. GEMINI API HELPER (INDIVIDUAL CHAT + 19-AGENT FORUM SECRETARY RECAP)
+        // ============================================================================
+        async function callGeminiAgent(agent, userMessage, chatHistory, customApiKey) {
+            const envKey = "";
+            const activeKey = (customApiKey && customApiKey.trim()) ? customApiKey.trim() : envKey;
+            const modelName = (customApiKey && customApiKey.trim()) ? "gemini-2.5-flash" : "gemini-3-flash-preview";
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${activeKey}`;
+
+            const systemText = `${agent.systemPrompt}\n\nIdentitasmu:\n- Nama: ${agent.name}\n- Jabatan/Keahlian: ${agent.role} (${agent.category})\n- Ruangan Kantor: ${agent.room}\n- Ciri Khas Lucu: ${agent.funnyTrait}\n\nAturan Menjawab:\n1. Jawablah dengan gaya karaktermu yang khas, ramah, sedikit menyelipkan candaan sesuai ciri khasmu, namun tetap SANGAT DETAIL, AKURAT, dan SOLUTIF secara teknis/akademis untuk membantu Bos Nadzar.\n2. Gunakan bahasa Indonesia yang natural dan jelas.`;
+
+            const contents = [];
+            (chatHistory || []).slice(-6).forEach(m => {
+                contents.push({
+                    role: m.sender === 'user' ? 'user' : 'model',
+                    parts: [{ text: m.text }]
+                });
+            });
+            contents.push({
+                role: 'user',
+                parts: [{ text: userMessage }]
+            });
+
+            let delay = 1000;
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents,
+                            systemInstruction: { parts: [{ text: systemText }] }
+                        })
+                    });
+                    if (!res.ok) {
+                        const errData = await res.json().catch(() => ({}));
+                        throw new Error(errData?.error?.message || `HTTP ${res.status}`);
+                    }
+                    const data = await res.json();
+                    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (reply) return reply;
+                    throw new Error('Respons kosong dari Gemini.');
+                } catch (err) {
+                    if (attempt === 2) throw err;
+                    await new Promise(r => setTimeout(r, delay));
+                    delay *= 2;
+                }
+            }
+        }
+
+        // Multi-Agent Townhall Discussion + Secretary / Chosen Responder Executive Recap
+        async function callGeminiForumRecap(topic, responderAgent, allAgents, customApiKey) {
+            const envKey = "";
+            const activeKey = (customApiKey && customApiKey.trim()) ? customApiKey.trim() : envKey;
+            const modelName = (customApiKey && customApiKey.trim()) ? "gemini-2.5-flash" : "gemini-3-flash-preview";
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${activeKey}`;
+
+            const rosterText = allAgents
+                .map(a => `- #${a.num} ${a.name} (${a.role} - ${a.category})`)
+                .join('\n');
+
+            const systemPrompt = `Kamu adalah ${responderAgent.name} (${responderAgent.role}) di kantor AICA milik CEO Nadzar.
+Saat ini CEO Nadzar sedang mengadakan FORUM DISKUSI SEMUA AGENT (19 Agent hadir: Pimpinan, 10 Matkul Semester 5 Teknik Elektro, 3 Projek AIoT/Listrik/Film, dan 1 Kepanitiaan Organisasi).
+
+Daftar seluruh 19 Agent di ruangan rapat:
+${rosterText}
+
+Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
+1. Buka dengan sapaan khasmu kepada CEO Nadzar bahwa rapat telah selesai dan kamu telah mencatat seluruh kontribusi para agent.
+2. Tampilkan bagian **"📌 Intisari Kontribusi Tiap Agent Terkait"** (sebutkan nama-nama agent yang relevan beserta poin teknis/akademis spesifik dari sudut pandang matkul/projek mereka terhadap topik Nadzar).
+3. Tampilkan bagian **"📋 Rekapitulasi Eksekutif & Rencana Tindak Lanjut (Action Plan)"** yang menyatukan seluruh jawaban agent menjadi kesimpulan utuh, terstruktur, dan siap dijalankan oleh CEO Nadzar.`;
+
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ role: 'user', parts: [{ text: `Topik Diskusi dari CEO Nadzar: "${topic}"\n\nBerikan rangkuman diskusi lengkap dari para agent dan rekap eksekutifnya!` }] }],
+                        systemInstruction: { parts: [{ text: systemPrompt }] }
+                    })
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) return text;
+                throw new Error('Empty response');
+            } catch (err) {
+                // Smart structured fallback if offline or API key not set yet
+                return `📋 **LAPORAN REKAPITULASI FORUM 19 AGENT — Disusun oleh ${responderAgent.name}**\n*(Mode Pratinjau Instan — Hubungkan Gemini API Key di kanan atas untuk analisis AI generatif penuh)*\n\n**Topik Diskusi CEO Nadzar:**\n"${topic}"\n\n---\n### 📌 1. Masukan Spesifik Tiap Divisi Agent:\n- **#5 Teguh (Sistem Tenaga S1TE-08-A) & #16 Doni (Project Kelistrikan):** Menyiapkan skema suplai daya utama, perhitungan beban, proteksi MCB/Kontaktor, serta efisiensi daya.\n- **#3 Bagas (Elektronika 2) & #6 Aris (Sistem Tertanam):** Merancang pengondisi sinyal sensor (Op-Amp filter aktif) dan pemrograman mikrokontroler STM32/ESP32 berbasis interrupt.\n- **#9 Alya (Kecerdasan Buatan), #12 Dina (Sistem IoT) & #15 Kevin (Project AIoT):** Mengintegrasikan model inferensi AI dengan pengiriman telemetri MQTT real-time ke dashboard cloud.\n- **#4 Joko (Otomatisasi Industri) & #11 Fajar (Sinyal Diskret):** Memastikan kendali aktuator stabil dan sinyal sensor bersih menggunakan filter digital FIR/IIR.\n- **#7 Rani (Praktikum) & #13 Tiara (Koordinator Smt 5):** Menyusun dokumentasi pengujian tabel data lab agar langsung bisa dipakai untuk laporan praktikum dan tugas kuliah.\n- **#8 Pak Riko (EkoBisnis):** Menghitung RAB, estimasi HPP alat, analisis BEP, dan kelayakan NPV apabila projek dikomersialkan.\n- **#17 Maya (Ahli Film) & #18 Dimas (Organisasi):** Menyiapkan storyboard video dokumenter presentasi projek serta rundown pameran/demo.\n\n---\n### ✅ 2. Kesimpulan & Rencana Eksekusi (${responderAgent.name}):\n1. **Tahap 1 (Desain & Komponen):** Aris, Bagas, dan Doni memfinalisasi skematik rangkaian & daftar komponen.\n2. **Tahap 2 (Integrasi Kode & AIoT):** Kevin, Alya, dan Dina menyambungkan firmware ESP32 ke broker MQTT & model AI.\n3. **Tahap 3 (Laporan, Biaya & Video Demo):** Rani, Pak Riko, dan Maya menyelesaikan laporan akhir, perhitungan kelayakan bisnis, dan video presentasi.`;
+            }
+        }
+
+        // ============================================================================
+        // 3. DESTINATION RESOLVER & CORRIDOR PATHING FOR 19 AGENTS
+        // ============================================================================
+        function getAgentTarget(agent, idx, allAgents, sleepMode, loungeMode, idleTick) {
+            if (sleepMode && agent.state !== 'Working') {
+                const row = idx < 10 ? 0 : 1;
+                const col = idx < 10 ? idx : idx - 10;
+                return {
+                    floor: 2,
+                    x: -16.2 + col * 3.5,
+                    z: row === 0 ? -9.2 : -4.2,
+                    ry: 0,
+                    posture: 'sleep',
+                    roomLabel: `Lantai 2 — Kasur Dormitory #${idx + 1}`,
+                    bubble: '💤 Tidur Pulas di Lantai 2'
+                };
+            }
+
+            if (loungeMode && agent.state === 'Idle') {
+                const f2Spots = LOUNGE_AND_IDLE_SPOTS.filter(s => s.floor === 2);
+                const pick = f2Spots[(idx + idleTick) % f2Spots.length];
+                return {
+                    floor: 2,
+                    x: pick.x + ((idx % 3) - 1) * 0.85,
+                    z: pick.z,
+                    ry: pick.ry,
+                    posture: pick.posture,
+                    roomLabel: 'Lantai 2 — Area Santai & Hiburan',
+                    bubble: `🎮 ${pick.label}`
+                };
+            }
+
+            if (agent.state === 'Meeting' || agent.state === 'Collaborating') {
+                const participants = allAgents.filter(a => a.state === 'Meeting' || a.state === 'Collaborating');
+                const pIdx = Math.max(0, participants.findIndex(a => a.id === agent.id));
+                if (pIdx === 0) {
+                    return {
+                        floor: 1, x: 0.0, z: -11.5, ry: 0,
+                        posture: 'stand',
+                        roomLabel: 'Hall Rapat Kaca (Presenter)',
+                        bubble: '📊 Memimpin Diskusi di Layar Utama'
+                    };
+                }
+                const side = pIdx % 2 === 1 ? -1 : 1;
+                const row = Math.floor((pIdx - 1) / 2);
+                return {
+                    floor: 1,
+                    x: 0.0 + side * 2.2,
+                    z: -10.2 + (row % 9) * 0.92,
+                    ry: side === -1 ? Math.PI / 2 : -Math.PI / 2,
+                    posture: 'sit',
+                    roomLabel: 'Hall Rapat Kaca (Townhall 19 Agent)',
+                    bubble: '🏛️ Mengikuti Forum Diskusi'
+                };
+            }
+
+            if (agent.state === 'Idle') {
+                const spot = LOUNGE_AND_IDLE_SPOTS[(idx * 2 + idleTick) % LOUNGE_AND_IDLE_SPOTS.length];
+                return {
+                    floor: spot.floor,
+                    x: spot.x + ((idx % 2) * 0.65),
+                    z: spot.z,
+                    ry: spot.ry,
+                    posture: spot.posture,
+                    roomLabel: spot.floor === 2 ? 'Lantai 2 — Area Santai' : 'Taman Hijau / Kantin Kantor',
+                    bubble: `🌿 ${spot.label}`
+                };
+            }
+
+            // Default: Working or Thinking at their assigned specialist room desk
+            // ry matches deskPos.ry so agent faces DIRECTLY toward their computer monitor!
+            return {
+                floor: 1,
+                x: agent.deskPos.x,
+                z: agent.deskPos.z,
+                ry: agent.deskPos.ry || 0,
+                posture: 'sit',
+                roomLabel: `Ruang ${agent.room} — Meja #${idx + 1}`,
+                bubble: agent.state === 'Thinking' ? '🧠 Sedang Mikir Jawaban AI...' : `💻 ${agent.currentTask}`
+            };
+        }
+
+        function computeWaypoints(curFloor, curX, curZ, targetFloor, targetX, targetZ) {
+            const waypoints = [];
+            if (curFloor !== targetFloor) {
+                // Grand Staircase at X: -3.5, Z: 11.5
+                waypoints.push({ floor: curFloor, x: -3.5, z: 11.0 });
+                waypoints.push({ floor: targetFloor, x: -3.5, z: 9.8 });
+            }
+            if (Math.hypot(targetX - curX, targetZ - curZ) > 7.5) {
+                waypoints.push({ floor: targetFloor, x: (curX + targetX) * 0.35, z: -1.2 });
+            }
+            waypoints.push({ floor: targetFloor, x: targetX, z: targetZ });
+            return waypoints;
+        }
+
+        // ============================================================================
+        // 4. LUCIDE ICON HELPER
+        // ============================================================================
+        function Icon({ name, className = "w-4 h-4" }) {
+            const ref = useRef(null);
+            useEffect(() => {
+                if (ref.current && window.lucide) {
+                    ref.current.innerHTML = `<i data-lucide="${name}" class="${className}"></i>`;
+                    window.lucide.createIcons({ root: ref.current });
+                }
+            }, [name, className]);
+            return <span ref={ref} className="inline-flex items-center justify-center shrink-0" />;
+        }
+
+        // ============================================================================
+        // 5. THREE.JS 3D MEGA-OFFICE, LUSH PARK GREENERY & DAY/NIGHT SKY DOME
+        // ============================================================================
+        function ThreeVirtualOffice({
+            agents,
+            darkMode,
+            activeFloor,
+            setActiveFloor,
+            sleepMode,
+            loungeMode,
+            panMode,
+            resetTrigger,
+            focusAgentId,
+            onSelectAgent,
+            idleTick
+        }) {
+            const mountRef = useRef(null);
+            const labelsRef = useRef(null);
+            const sceneRef = useRef(null);
+            const cameraRef = useRef(null);
+            const controlsRef = useRef(null);
+            const floor2GroupRef = useRef(null);
+            const skyRefs = useRef({
+                hemi: null,
+                dirLight: null,
+                sunGroup: null,
+                moonGroup: null,
+                starsMesh: null,
+                cloudsGroup: null,
+                cloudMats: [],
+                nightLights: []
+            });
+            const rigsRef = useRef({});
+
+            const stateRef = useRef({ agents, sleepMode, loungeMode, activeFloor, idleTick, darkMode });
+            stateRef.current = { agents, sleepMode, loungeMode, activeFloor, idleTick, darkMode };
+
+            // Procedural Male & Female Character Builder with Outfits & Accessories
+            const buildCharacterAvatar = (agent) => {
+                const root = new THREE.Group();
+                const isFemale = agent.gender === 'female';
+
+                const skinMat = new THREE.MeshStandardMaterial({ color: 0xf5cba7, roughness: 0.55 });
+                const shirtMat = new THREE.MeshStandardMaterial({ color: agent.shirtColor, roughness: 0.45 });
+                const pantsMat = new THREE.MeshStandardMaterial({ color: agent.pantsColor || 0x1e293b, roughness: 0.7 });
+                const hairMat = new THREE.MeshStandardMaterial({ color: agent.hairColor || 0x0f172a, roughness: 0.8 });
+
+                const bodyGroup = new THREE.Group();
+                bodyGroup.position.y = 0.62;
+                root.add(bodyGroup);
+
+                const torsoW = isFemale ? 0.36 : 0.44;
+                const torso = new THREE.Mesh(new THREE.BoxGeometry(torsoW, 0.50, 0.23), shirtMat);
+                torso.position.y = 0.25;
+                torso.castShadow = true;
+                bodyGroup.add(torso);
+
+                if (isFemale) {
+                    const hem = new THREE.Mesh(new THREE.BoxGeometry(0.39, 0.14, 0.25), shirtMat);
+                    hem.position.y = 0.04;
+                    bodyGroup.add(hem);
+                } else if (agent.id === 'riko-ekobisnis') {
+                    const tie = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.32, 0.03), new THREE.MeshStandardMaterial({ color: 0xdc2626 }));
+                    tie.position.set(0, 0.26, 0.13);
+                    bodyGroup.add(tie);
+                }
+
+                // Head Group (Eyes look along +Z local)
+                const headGroup = new THREE.Group();
+                headGroup.position.y = 0.54;
+                bodyGroup.add(headGroup);
+
+                const head = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.31, 0.31), skinMat);
+                head.position.y = 0.16;
+                head.castShadow = true;
+                headGroup.add(head);
+
+                const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+                const lEye = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.045, 0.02), eyeMat);
+                lEye.position.set(-0.07, 0.17, 0.16);
+                const rEye = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.045, 0.02), eyeMat);
+                rEye.position.set(0.07, 0.17, 0.16);
+                headGroup.add(lEye, rEye);
+
+                const topHair = new THREE.Mesh(new THREE.BoxGeometry(0.33, 0.11, 0.33), hairMat);
+                topHair.position.y = 0.31;
+                headGroup.add(topHair);
+
+                if (agent.hairStyle === 'ponytail') {
+                    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.26, 0.12), hairMat);
+                    tail.position.set(0, 0.16, -0.20);
+                    tail.rotation.x = 0.35;
+                    headGroup.add(tail);
+                } else if (agent.hairStyle === 'long') {
+                    const backHair = new THREE.Mesh(new THREE.BoxGeometry(0.33, 0.32, 0.10), hairMat);
+                    backHair.position.set(0, 0.12, -0.15);
+                    headGroup.add(backHair);
+                } else if (agent.hairStyle === 'bun') {
+                    const bun = new THREE.Mesh(new THREE.SphereGeometry(0.10, 8, 8), hairMat);
+                    bun.position.set(0, 0.34, -0.14);
+                    headGroup.add(bun);
+                } else if (agent.hairStyle === 'spiky') {
+                    for (let s = -1; s <= 1; s++) {
+                        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 5), hairMat);
+                        spike.position.set(s * 0.09, 0.42, 0);
+                        headGroup.add(spike);
+                    }
+                }
+
+                if (agent.hatType && agent.hatType.startsWith('helmet_')) {
+                    const hColor = agent.hatType === 'helmet_orange' ? 0xf97316 : agent.hatType === 'helmet_white' ? 0xf8fafc : 0xfacc15;
+                    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.21, 12, 10, 0, Math.PI * 2, 0, Math.PI / 1.8), new THREE.MeshStandardMaterial({ color: hColor, roughness: 0.3 }));
+                    helmet.position.y = 0.26;
+                    headGroup.add(helmet);
+                } else if (agent.hatType === 'beanie_purple') {
+                    const beanie = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.18, 0.16, 12), new THREE.MeshStandardMaterial({ color: 0x9333ea }));
+                    beanie.position.y = 0.35;
+                    headGroup.add(beanie);
+                } else if (agent.hatType === 'cap_blue') {
+                    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.10, 0.38), new THREE.MeshStandardMaterial({ color: 0x2563eb }));
+                    cap.position.set(0, 0.33, 0.04);
+                    headGroup.add(cap);
+                } else if (agent.hatType === 'glasses' || agent.hatType === 'goggles') {
+                    const gColor = agent.hatType === 'goggles' ? 0x38bdf8 : 0xfbbf24;
+                    const glasses = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.06, 0.04), new THREE.MeshStandardMaterial({ color: gColor }));
+                    glasses.position.set(0, agent.hatType === 'goggles' ? 0.27 : 0.17, 0.165);
+                    headGroup.add(glasses);
+                } else if (agent.hatType && agent.hatType.startsWith('headset_')) {
+                    const hsColor = agent.hatType === 'headset_gold' ? 0xfbbf24 : 0x06b6d4;
+                    const band = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.05, 0.08), new THREE.MeshStandardMaterial({ color: hsColor }));
+                    band.position.set(0, 0.36, 0);
+                    headGroup.add(band);
+                }
+
+                // Articulated Arms & Legs
+                const armOffset = isFemale ? 0.24 : 0.28;
+                const leftArmPivot = new THREE.Group();
+                leftArmPivot.position.set(-armOffset, 0.46, 0);
+                const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.42, 0.11), shirtMat);
+                leftArm.position.y = -0.17;
+                leftArm.castShadow = true;
+                leftArmPivot.add(leftArm);
+                bodyGroup.add(leftArmPivot);
+
+                const rightArmPivot = new THREE.Group();
+                rightArmPivot.position.set(armOffset, 0.46, 0);
+                const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.42, 0.11), shirtMat);
+                rightArm.position.y = -0.17;
+                rightArm.castShadow = true;
+                rightArmPivot.add(rightArm);
+                bodyGroup.add(rightArmPivot);
+
+                const leftLegPivot = new THREE.Group();
+                leftLegPivot.position.set(-0.10, 0, 0);
+                const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.54, 0.14), pantsMat);
+                leftLeg.position.y = -0.27;
+                leftLeg.castShadow = true;
+                leftLegPivot.add(leftLeg);
+                bodyGroup.add(leftLegPivot);
+
+                const rightLegPivot = new THREE.Group();
+                rightLegPivot.position.set(0.10, 0, 0);
+                const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.54, 0.14), pantsMat);
+                rightLeg.position.y = -0.27;
+                rightLeg.castShadow = true;
+                rightLegPivot.add(rightLeg);
+                bodyGroup.add(rightLegPivot);
+
+                return { root, bodyGroup, headGroup, leftArmPivot, rightArmPivot, leftLegPivot, rightLegPivot };
+            };
+
+            useEffect(() => {
+                const container = mountRef.current;
+                if (!container) return;
+
+                const isNight = stateRef.current.darkMode;
+                const scene = new THREE.Scene();
+                scene.background = new THREE.Color(isNight ? 0x050816 : 0x60a5fa);
+                scene.fog = new THREE.FogExp2(isNight ? 0x050816 : 0x93c5fd, 0.0045);
+                sceneRef.current = scene;
+
+                const camera = new THREE.PerspectiveCamera(42, container.clientWidth / container.clientHeight, 0.1, 320);
+                camera.position.set(0, 34, 42);
+                cameraRef.current = camera;
+
+                const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+                renderer.setSize(container.clientWidth, container.clientHeight);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+                renderer.shadowMap.enabled = true;
+                renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                container.innerHTML = '';
+                container.appendChild(renderer.domElement);
+
+                const controls = new THREE.OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.07;
+                controls.maxPolarAngle = Math.PI / 2 - 0.03;
+                controls.minDistance = 7;
+                controls.maxDistance = 85;
+                controlsRef.current = controls;
+
+                // ====================================================================
+                // SKY SYSTEM: SUN, MOON, TWINKLING STARS & MOVING CLOUDS
+                // ====================================================================
+                const hemi = new THREE.HemisphereLight(
+                    isNight ? 0x1e293b : 0xe0f2fe,
+                    isNight ? 0x090d16 : 0x166534,
+                    isNight ? 0.42 : 0.92
+                );
+                scene.add(hemi);
+
+                const dirLight = new THREE.DirectionalLight(isNight ? 0x93c5fd : 0xfffbeb, isNight ? 0.38 : 1.15);
+                dirLight.position.set(28, 45, 24);
+                dirLight.castShadow = true;
+                dirLight.shadow.mapSize.width = 2048;
+                dirLight.shadow.mapSize.height = 2048;
+                const d = 36;
+                dirLight.shadow.camera.left = -d;
+                dirLight.shadow.camera.right = d;
+                dirLight.shadow.camera.top = d;
+                dirLight.shadow.camera.bottom = -d;
+                scene.add(dirLight);
+
+                // 1. 3D Sun Group (Daytime)
+                const sunGroup = new THREE.Group();
+                sunGroup.position.set(38, 46, -42);
+                const sunCore = new THREE.Mesh(
+                    new THREE.SphereGeometry(4.5, 20, 20),
+                    new THREE.MeshBasicMaterial({ color: 0xfde047 })
+                );
+                const sunHalo = new THREE.Mesh(
+                    new THREE.SphereGeometry(6.4, 20, 20),
+                    new THREE.MeshBasicMaterial({ color: 0xfef08a, transparent: true, opacity: 0.35 })
+                );
+                sunGroup.add(sunCore, sunHalo);
+                sunGroup.visible = !isNight;
+                scene.add(sunGroup);
+
+                // 2. 3D Moon Group (Nighttime)
+                const moonGroup = new THREE.Group();
+                moonGroup.position.set(-36, 44, -40);
+                const moonCore = new THREE.Mesh(
+                    new THREE.SphereGeometry(3.8, 20, 20),
+                    new THREE.MeshBasicMaterial({ color: 0xf8fafc })
+                );
+                const moonGlow = new THREE.Mesh(
+                    new THREE.SphereGeometry(5.5, 20, 20),
+                    new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.25 })
+                );
+                moonGroup.add(moonCore, moonGlow);
+                moonGroup.visible = isNight;
+                scene.add(moonGroup);
+
+                // 3. Starfield (450 lightweight points for Night Sky)
+                const starGeo = new THREE.BufferGeometry();
+                const starCount = 450;
+                const starPos = new Float32Array(starCount * 3);
+                for (let i = 0; i < starCount; i++) {
+                    const theta = Math.random() * Math.PI * 2;
+                    const y = 26 + Math.random() * 58;
+                    const rad = 50 + Math.random() * 65;
+                    starPos[i * 3] = Math.cos(theta) * rad;
+                    starPos[i * 3 + 1] = y;
+                    starPos[i * 3 + 2] = Math.sin(theta) * rad;
+                }
+                starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+                const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.65, transparent: true, opacity: 0.9 });
+                const starsMesh = new THREE.Points(starGeo, starMat);
+                starsMesh.visible = isNight;
+                scene.add(starsMesh);
+
+                // 4. Lightweight Drifting 3D Low-Poly Clouds
+                const cloudsGroup = new THREE.Group();
+                const cloudMats = [];
+                const cloudMat = new THREE.MeshStandardMaterial({
+                    color: isNight ? 0x1e293b : 0xffffff,
+                    roughness: 0.95,
+                    transparent: true,
+                    opacity: isNight ? 0.55 : 0.92
+                });
+                cloudMats.push(cloudMat);
+
+                for (let c = 0; c < 14; c++) {
+                    const cl = new THREE.Group();
+                    const mainPuff = new THREE.Mesh(new THREE.BoxGeometry(5.5, 1.4, 3.2), cloudMat);
+                    const puffL = new THREE.Mesh(new THREE.BoxGeometry(3.5, 1.1, 2.5), cloudMat);
+                    puffL.position.set(-2.4, -0.15, 0.3);
+                    const puffR = new THREE.Mesh(new THREE.BoxGeometry(3.8, 1.2, 2.6), cloudMat);
+                    puffR.position.set(2.4, -0.1, -0.2);
+                    cl.add(mainPuff, puffL, puffR);
+                    cl.position.set(
+                        -65 + (c * 11) % 130,
+                        27 + (c % 4) * 3.5,
+                        -52 + (c * 17) % 95
+                    );
+                    cl.userData = { speed: 0.7 + (c % 3) * 0.35 };
+                    cloudsGroup.add(cl);
+                }
+                scene.add(cloudsGroup);
+
+                const nightLights = [];
+
+                // ====================================================================
+                // LUSH INDONESIAN CAMPUS PARK SURROUNDINGS (96m x 96m PLOT)
+                // ====================================================================
+                const parkGround = new THREE.Mesh(
+                    new THREE.BoxGeometry(96, 0.4, 96),
+                    new THREE.MeshStandardMaterial({ color: isNight ? 0x062e1e : 0x4ade80, roughness: 0.92 })
+                );
+                parkGround.position.y = -0.22;
+                parkGround.receiveShadow = true;
+                scene.add(parkGround);
+
+                // Stone Walkways & Front Plaza
+                const stoneMat = new THREE.MeshStandardMaterial({ color: isNight ? 0x334155 : 0xcbd5e1, roughness: 0.8 });
+                const frontPlaza = new THREE.Mesh(new THREE.BoxGeometry(34, 0.06, 12), stoneMat);
+                frontPlaza.position.set(-1.0, 0.01, 20.0);
+                frontPlaza.receiveShadow = true;
+                scene.add(frontPlaza);
+
+                const culinaryAlley = new THREE.Mesh(new THREE.BoxGeometry(8.5, 0.06, 36), stoneMat);
+                culinaryAlley.position.set(25.0, 0.01, 1.0);
+                culinaryAlley.receiveShadow = true;
+                scene.add(culinaryAlley);
+
+                // Decorative Koi Pond & Fountain in Front Plaza (X: 0, Z: 21)
+                const pondRim = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.6, 0.45, 20), new THREE.MeshStandardMaterial({ color: 0x64748b }));
+                pondRim.position.set(0, 0.22, 21.0);
+                const pondWater = new THREE.Mesh(new THREE.CylinderGeometry(3.1, 3.1, 0.38, 20), new THREE.MeshStandardMaterial({ color: 0x0ea5e9, roughness: 0.2 }));
+                pondWater.position.set(0, 0.26, 21.0);
+                const fountainTier = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.1, 1.4, 12), new THREE.MeshStandardMaterial({ color: 0xe2e8f0 }));
+                fountainTier.position.set(0, 0.85, 21.0);
+                scene.add(pondRim, pondWater, fountainTier);
+
+                // Wooden Garden Gazebo (X: -14, Z: 20.5)
+                const gazeboGroup = new THREE.Group();
+                gazeboGroup.position.set(-14.0, 0, 20.5);
+                const gazDeck = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.3, 4.6), new THREE.MeshStandardMaterial({ color: 0x78350f }));
+                gazDeck.position.y = 0.15;
+                const gazRoof = new THREE.Mesh(new THREE.ConeGeometry(3.8, 1.8, 4), new THREE.MeshStandardMaterial({ color: 0x9a3412 }));
+                gazRoof.position.y = 3.2;
+                gazRoof.rotation.y = Math.PI / 4;
+                gazeboGroup.add(gazDeck, gazRoof);
+                [[-1.9, -1.9], [1.9, -1.9], [-1.9, 1.9], [1.9, 1.9]].forEach(([px, pz]) => {
+                    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.5, 8), new THREE.MeshStandardMaterial({ color: 0x451a03 }));
+                    post.position.set(px, 1.4, pz);
+                    gazeboGroup.add(post);
+                });
+                scene.add(gazeboGroup);
+
+                // Procedural Trees Builder (Oak/Rindang, Pine/Cemara, Palm)
+                const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
+                const leafMat1 = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.8 });
+                const leafMat2 = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.8 });
+                const leafMat3 = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.8 });
+
+                const addTree = (tx, tz, scale = 1, style = 'oak') => {
+                    const tg = new THREE.Group();
+                    tg.position.set(tx, 0, tz);
+                    tg.scale.set(scale, scale, scale);
+                    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.36, 2.4, 8), trunkMat);
+                    trunk.position.y = 1.2;
+                    trunk.castShadow = true;
+                    tg.add(trunk);
+
+                    if (style === 'pine') {
+                        const c1 = new THREE.Mesh(new THREE.ConeGeometry(1.7, 2.6, 8), leafMat1);
+                        c1.position.y = 2.8;
+                        c1.castShadow = true;
+                        const c2 = new THREE.Mesh(new THREE.ConeGeometry(1.3, 2.2, 8), leafMat2);
+                        c2.position.y = 4.1;
+                        c2.castShadow = true;
+                        tg.add(c1, c2);
+                    } else {
+                        const crownMain = new THREE.Mesh(new THREE.DodecahedronGeometry(1.65, 1), leafMat2);
+                        crownMain.position.y = 3.1;
+                        crownMain.castShadow = true;
+                        const crownSub = new THREE.Mesh(new THREE.DodecahedronGeometry(1.2, 1), leafMat3);
+                        crownSub.position.set(0.7, 2.7, 0.5);
+                        const crownSub2 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.1, 1), leafMat1);
+                        crownSub2.position.set(-0.7, 2.8, -0.4);
+                        tg.add(crownMain, crownSub, crownSub2);
+                    }
+                    scene.add(tg);
+                };
+
+                // 38 Lush Trees Surrounding the Mega Office Building
+                const treeCoords = [
+                    // West Park Forest
+                    [-26, -18, 1.2, 'oak'], [-31, -12, 1.4, 'pine'], [-25, -5, 1.1, 'oak'], [-30, 2, 1.3, 'oak'],
+                    [-26, 9, 1.2, 'pine'], [-32, 16, 1.5, 'oak'], [-25, 22, 1.1, 'oak'], [-20, 27, 1.3, 'pine'],
+                    // North Back Garden
+                    [-22, -22, 1.3, 'pine'], [-15, -21, 1.2, 'oak'], [-8, -23, 1.4, 'oak'], [0, -21, 1.1, 'pine'],
+                    [8, -23, 1.3, 'oak'], [16, -21, 1.2, 'pine'], [24, -22, 1.4, 'oak'], [30, -18, 1.2, 'oak'],
+                    // East Culinary Park & Alley
+                    [31, -10, 1.3, 'oak'], [30, -2, 1.1, 'pine'], [32, 6, 1.4, 'oak'], [30, 14, 1.2, 'oak'],
+                    [28, 22, 1.3, 'pine'], [22, 26, 1.2, 'oak'],
+                    // South Front Campus Avenue
+                    [-12, 29, 1.3, 'oak'], [-5, 31, 1.1, 'pine'], [6, 30, 1.4, 'oak'], [14, 28, 1.2, 'oak'],
+                    [-28, -26, 1.5, 'pine'], [34, -24, 1.4, 'pine'], [-35, 25, 1.4, 'oak'], [35, 25, 1.3, 'oak']
+                ];
+                treeCoords.forEach(([x, z, sc, st]) => addTree(x, z, sc, st));
+
+                // Colorful Flower Beds & Bushes along the front & sides of the Office
+                const bushPositions = [
+                    [-18, 15.2], [-14, 15.2], [-10, 15.2], [8, 15.2], [12, 15.2], [16, 15.2],
+                    [-22.5, -8], [-22.5, -2], [-22.5, 4], [-22.5, 10]
+                ];
+                bushPositions.forEach(([bx, bz], i) => {
+                    const bush = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.65, 0.9), leafMat2);
+                    bush.position.set(bx, 0.35, bz);
+                    const flower = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.22, 6, 6),
+                        new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0xf43f5e : 0xfacc15 })
+                    );
+                    flower.position.set(bx, 0.75, bz);
+                    scene.add(bush, flower);
+                });
+
+                // Garden Benches & Warm Street Lamps
+                [[-8, 23], [8, 23], [12, 19.5], [22, 10]].forEach(([lx, lz]) => {
+                    const bench = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.45, 0.65), new THREE.MeshStandardMaterial({ color: 0x78350f }));
+                    bench.position.set(lx, 0.25, lz);
+                    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 3.6, 8), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+                    pole.position.set(lx + 1.4, 1.8, lz);
+                    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), new THREE.MeshBasicMaterial({ color: 0xfef08a }));
+                    bulb.position.set(lx + 1.4, 3.6, lz);
+                    const pLight = new THREE.PointLight(0xfbbf24, isNight ? 1.2 : 0.0, 12);
+                    pLight.position.set(lx + 1.4, 3.4, lz);
+                    nightLights.push(pLight);
+                    scene.add(bench, pole, bulb, pLight);
+                });
+
+                // Bendera Merah Putih in Front Plaza
+                const flagPole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 6.2, 10), new THREE.MeshStandardMaterial({ color: 0xe2e8f0 }));
+                flagPole.position.set(-7.5, 3.1, 19.5);
+                const flagRed = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.48, 0.04), new THREE.MeshStandardMaterial({ color: 0xdc2626 }));
+                flagRed.position.set(-6.6, 5.8, 19.5);
+                const flagWhite = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.48, 0.04), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+                flagWhite.position.set(-6.6, 5.32, 19.5);
+                scene.add(flagPole, flagRed, flagWhite);
+
+                // Gerobak Bakso & Kopi Keliling in Side Culinary Park (X: 25)
+                const baksoCart = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.35, 2.2), new THREE.MeshStandardMaterial({ color: 0x0284c7 }));
+                baksoCart.position.set(25.5, 0.7, -3.0);
+                const baksoLight = new THREE.PointLight(0xfbbf24, isNight ? 1.6 : 0.1, 10);
+                baksoLight.position.set(25.5, 2.3, -3.0);
+                nightLights.push(baksoLight);
+                scene.add(baksoCart, baksoLight);
+
+                const kopiCart = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.1, 1.8), new THREE.MeshStandardMaterial({ color: 0x16a34a }));
+                kopiCart.position.set(25.5, 0.58, 3.5);
+                scene.add(kopiCart);
+
+                // ====================================================================
+                // FLOOR 1 — EXPANDED 44m x 30m MEGA OFFICE BUILDING
+                // ====================================================================
+                const floor1Group = new THREE.Group();
+                scene.add(floor1Group);
+
+                const mainSlab = new THREE.Mesh(
+                    new THREE.BoxGeometry(44, 0.24, 30),
+                    new THREE.MeshStandardMaterial({ color: isNight ? 0x1e293b : 0xf8fafc, roughness: 0.65 })
+                );
+                mainSlab.position.set(-0.5, 0, 0);
+                mainSlab.receiveShadow = true;
+                floor1Group.add(mainSlab);
+
+                const addRoomCarpet = (x, z, w, d, hex) => {
+                    const carpet = new THREE.Mesh(
+                        new THREE.BoxGeometry(w, 0.03, d),
+                        new THREE.MeshStandardMaterial({ color: hex, roughness: 0.85 })
+                    );
+                    carpet.position.set(x, 0.13, z);
+                    carpet.receiveShadow = true;
+                    floor1Group.add(carpet);
+                };
+                // 1. Executive Carpet (Sky Blue)
+                addRoomCarpet(-14.2, -8.5, 11.5, 7.8, isNight ? 0x0c4a6e : 0xe0f2fe);
+                // 2. Glass Meeting & Townhall Carpet (Emerald)
+                addRoomCarpet(0.0, -8.2, 10.2, 8.2, isNight ? 0x064e3b : 0xd1fae5);
+                // 3. Lab Hardware & Kelistrikan Carpet (Amber/Orange)
+                addRoomCarpet(13.2, -8.0, 12.8, 8.6, isNight ? 0x431407 : 0xffedd5);
+                // 4. Ruang Akademik 10 Matkul Smt 5 Carpet (Indigo)
+                addRoomCarpet(-11.8, 5.2, 16.5, 8.8, isNight ? 0x1e1b4b : 0xe0e7ff);
+                // 5. Studio Projek & Film Carpet (Purple)
+                addRoomCarpet(11.8, 5.2, 14.5, 8.8, isNight ? 0x3b0764 : 0xf3e8ff);
+
+                const wallMat = new THREE.MeshStandardMaterial({ color: isNight ? 0x334155 : 0xe2e8f0 });
+                const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.25, roughness: 0.1 });
+
+                const northWall = new THREE.Mesh(new THREE.BoxGeometry(44, 3.6, 0.28), wallMat);
+                northWall.position.set(-0.5, 1.8, -14.8);
+                const westWall = new THREE.Mesh(new THREE.BoxGeometry(0.28, 3.6, 30), wallMat);
+                westWall.position.set(-22.4, 1.8, 0);
+                floor1Group.add(northWall, westWall);
+
+                // Glass Room Dividers
+                const pExec = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.8, 8.0), glassMat);
+                pExec.position.set(-8.2, 1.4, -8.5);
+                const pMeetR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.8, 8.2), glassMat);
+                pMeetR.position.set(5.4, 1.4, -8.2);
+                const pStudio = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.8, 8.8), glassMat);
+                pStudio.position.set(4.2, 1.4, 5.2);
+                floor1Group.add(pExec, pMeetR, pStudio);
+
+                // ====================================================================
+                // WORKSTATION BUILDER (FIXED: AGENT SITS AT (0,0,0) FACING MONITOR AT +Z)
+                // ====================================================================
+                const createWorkstation = (x, z, ry, accentHex) => {
+                    const g = new THREE.Group();
+                    g.position.set(x, 0, z);
+                    g.rotation.y = ry || 0;
+
+                    // Chair seat + backrest behind seated agent (-Z) so agent looks toward +Z
+                    const chairSeat = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.10, 0.56), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+                    chairSeat.position.set(0, 0.42, 0);
+                    const chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.52, 0.08), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+                    chairBack.position.set(0, 0.72, -0.25);
+
+                    // Desk table in FRONT of agent (+Z)
+                    const desk = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.08, 0.92), new THREE.MeshStandardMaterial({ color: 0xb45309 }));
+                    desk.position.set(0, 0.74, 0.62);
+                    desk.castShadow = true;
+
+                    // Keyboard & Mouse pad on desk in front of hands
+                    const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.03, 0.18), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+                    keyboard.position.set(0, 0.79, 0.42);
+
+                    // Monitor Stand & Glowing Screen facing BACK (-Z) toward the agent's eyes!
+                    const monitor = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.48, 0.05), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+                    monitor.position.set(0, 1.08, 0.82);
+
+                    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.76, 0.42), new THREE.MeshBasicMaterial({ color: accentHex || 0x38bdf8 }));
+                    screen.position.set(0, 1.08, 0.79);
+                    screen.rotation.y = Math.PI; // Faces -Z directly toward the seated agent!
+
+                    g.add(chairSeat, chairBack, desk, keyboard, monitor, screen);
+                    floor1Group.add(g);
+                };
+
+                INITIAL_19_AGENTS.forEach(ag => {
+                    createWorkstation(ag.deskPos.x, ag.deskPos.z, ag.deskPos.ry, ag.color);
+                });
+
+                // Specialist Lab, Studio & Townhall Equipment
+                const powerPanel = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.4, 0.55), new THREE.MeshStandardMaterial({ color: 0xeab308 }));
+                powerPanel.position.set(19.5, 1.2, -7.8);
+                const greenScreen = new THREE.Mesh(new THREE.BoxGeometry(4.8, 2.8, 0.14), new THREE.MeshStandardMaterial({ color: 0x22c55e }));
+                greenScreen.position.set(13.5, 1.5, 9.2);
+                const confTable = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.14, 7.2), new THREE.MeshStandardMaterial({ color: 0x475569 }));
+                confTable.position.set(0.0, 0.76, -7.2);
+                const presTV = new THREE.Mesh(new THREE.BoxGeometry(3.6, 1.6, 0.10), new THREE.MeshBasicMaterial({ color: 0x0284c7 }));
+                presTV.position.set(0.0, 1.95, -14.2);
+                floor1Group.add(powerPanel, greenScreen, confTable, presTV);
+
+                // Pantry Galon Aqua, Ping-Pong & Arcade in South Indoor Recreation Strip
+                const galonBody = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.0, 0.55), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+                galonBody.position.set(-18.5, 0.5, 12.2);
+                const galonBottle = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.52, 12), new THREE.MeshPhysicalMaterial({ color: 0x0284c7, transparent: true, opacity: 0.85 }));
+                galonBottle.position.set(-18.5, 1.25, 12.2);
+                const pingPongTable = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.08, 3.0), new THREE.MeshStandardMaterial({ color: 0x15803d }));
+                pingPongTable.position.set(0.0, 0.76, 11.2);
+                const arcadeCab = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.9, 0.85), new THREE.MeshStandardMaterial({ color: 0x9333ea }));
+                arcadeCab.position.set(3.2, 0.95, 12.2);
+                floor1Group.add(galonBody, galonBottle, pingPongTable, arcadeCab);
+
+                // Interior Warm Night Lights
+                [[-14, -7], [0, -7], [13, -7], [-11, 5], [11, 5]].forEach(([ix, iz]) => {
+                    const rLight = new THREE.PointLight(0x38bdf8, isNight ? 0.95 : 0.1, 18);
+                    rLight.position.set(ix, 3.2, iz);
+                    nightLights.push(rLight);
+                    floor1Group.add(rLight);
+                });
+
+                // Grand Staircase to Floor 2 (X: -3.5, Z: 12.5)
+                for (let s = 0; s < 10; s++) {
+                    const step = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.22, 0.45), new THREE.MeshStandardMaterial({ color: 0x94a3b8 }));
+                    step.position.set(-3.5, 0.22 * (s + 1), 12.8 - s * 0.45);
+                    scene.add(step);
+                }
+
+                // ====================================================================
+                // FLOOR 2 — EXPANDED 44m x 30m DORMITORY (19 BEDS) + ROOFTOP LOUNGE
+                // ====================================================================
+                const floor2Group = new THREE.Group();
+                floor2Group.position.y = 3.8;
+                floor2Group.visible = stateRef.current.activeFloor === 2;
+                floor2GroupRef.current = floor2Group;
+                scene.add(floor2Group);
+
+                const slab2 = new THREE.Mesh(
+                    new THREE.BoxGeometry(44, 0.26, 30),
+                    new THREE.MeshStandardMaterial({ color: isNight ? 0x1e293b : 0xf1f5f9, roughness: 0.7 })
+                );
+                slab2.position.set(-0.5, 0, 0);
+                slab2.receiveShadow = true;
+                floor2Group.add(slab2);
+
+                // 19 Dormitory Beds
+                for (let b = 0; b < 19; b++) {
+                    const row = b < 10 ? 0 : 1;
+                    const col = b < 10 ? b : b - 10;
+                    const bx = -16.2 + col * 3.5;
+                    const bz = row === 0 ? -9.5 : -4.5;
+
+                    const bed = new THREE.Group();
+                    bed.position.set(bx, 0.24, bz);
+                    const mat = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.34, 2.2), new THREE.MeshStandardMaterial({ color: b % 2 === 0 ? 0x0284c7 : 0x6366f1 }));
+                    const pillow = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.15, 0.45), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+                    pillow.position.set(0, 0.22, -0.75);
+                    bed.add(mat, pillow);
+                    floor2Group.add(bed);
+                }
+
+                // Floor 2 Lounge Santai Furniture (Home Theater, PS5 Beanbags, Music Stage, Cafe Bar, Lesehan, Hammock)
+                const theaterRug = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.04, 4.8), new THREE.MeshStandardMaterial({ color: 0x312e81 }));
+                theaterRug.position.set(-12.0, 0.15, 4.2);
+                const bigTV = new THREE.Mesh(new THREE.BoxGeometry(3.8, 1.7, 0.10), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
+                bigTV.position.set(-12.0, 1.25, 1.5);
+                const sofaL = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.7, 1.1), new THREE.MeshStandardMaterial({ color: 0x4f46e5 }));
+                sofaL.position.set(-12.0, 0.45, 5.2);
+                floor2Group.add(theaterRug, bigTV, sofaL);
+
+                const ps5TV = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.1, 0.10), new THREE.MeshBasicMaterial({ color: 0xa855f7 }));
+                ps5TV.position.set(-4.5, 1.05, 2.0);
+                [-5.5, -4.5, -3.5].forEach((bbx, idx) => {
+                    const bb = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 10), new THREE.MeshStandardMaterial({ color: idx === 0 ? 0xf43f5e : idx === 1 ? 0x10b981 : 0xf59e0b }));
+                    bb.scale.y = 0.6;
+                    bb.position.set(bbx, 0.32, 4.8);
+                    floor2Group.add(bb);
+                });
+                floor2Group.add(ps5TV);
+
+                const stage = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.2, 3.2), new THREE.MeshStandardMaterial({ color: 0x78350f }));
+                stage.position.set(2.5, 0.22, 5.0);
+                const cafeBar = new THREE.Mesh(new THREE.BoxGeometry(4.5, 1.0, 0.9), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+                cafeBar.position.set(10.0, 0.58, 3.0);
+                const lesehan = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.05, 3.4), new THREE.MeshStandardMaterial({ color: 0xb45309 }));
+                lesehan.position.set(-11.0, 0.15, 9.5);
+                const hammock = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 2.8, 10), new THREE.MeshStandardMaterial({ color: 0xf97316 }));
+                hammock.rotation.z = Math.PI / 2;
+                hammock.position.set(12.0, 0.7, 9.5);
+                floor2Group.add(stage, cafeBar, lesehan, hammock);
+
+                skyRefs.current = { hemi, dirLight, sunGroup, moonGroup, starsMesh, cloudsGroup, cloudMats, nightLights };
+
+                // ====================================================================
+                // REAL-TIME ANIMATION LOOP (CLOUDS, STARS & 19 AGENTS)
+                // ====================================================================
+                const clock = new THREE.Clock();
+                let frameId;
+
+                const animate = () => {
+                    frameId = requestAnimationFrame(animate);
+                    const dt = Math.min(clock.getDelta(), 0.1);
+                    const elapsed = clock.getElapsedTime();
+
+                    controls.update();
+
+                    // Gently drift 3D clouds across the sky
+                    if (skyRefs.current.cloudsGroup) {
+                        skyRefs.current.cloudsGroup.children.forEach(cl => {
+                            cl.position.x += cl.userData.speed * dt;
+                            if (cl.position.x > 70) cl.position.x = -70;
+                        });
+                    }
+
+                    // Subtle star twinkle at night
+                    if (skyRefs.current.starsMesh && skyRefs.current.starsMesh.visible) {
+                        skyRefs.current.starsMesh.rotation.y = elapsed * 0.008;
+                    }
+
+                    const { agents: currAgents, sleepMode: sMode, loungeMode: lMode, activeFloor: aFloor, idleTick: iTick } = stateRef.current;
+                    const rigs = rigsRef.current;
+
+                    currAgents.forEach((ag, idx) => {
+                        const target = getAgentTarget(ag, idx, currAgents, sMode, lMode, iTick);
+
+                        if (!rigs[ag.id]) {
+                            const built = buildCharacterAvatar(ag);
+                            built.root.position.set(target.x, target.floor === 2 ? 3.92 : 0.14, target.z);
+                            built.root.rotation.y = target.ry;
+                            scene.add(built.root);
+
+                            const bubbleEl = document.createElement('div');
+                            bubbleEl.className = 'agent-bubble absolute z-10 cursor-pointer';
+                            bubbleEl.onclick = () => onSelectAgent(ag.id);
+                            if (labelsRef.current) labelsRef.current.appendChild(bubbleEl);
+
+                            rigs[ag.id] = {
+                                ...built,
+                                currentFloor: target.floor,
+                                waypoints: [],
+                                targetKey: `${target.floor}:${target.x.toFixed(1)},${target.z.toFixed(1)}`,
+                                walkPhase: idx * 0.9,
+                                bubbleEl
+                            };
+                        }
+
+                        const r = rigs[ag.id];
+                        const nextKey = `${target.floor}:${target.x.toFixed(1)},${target.z.toFixed(1)}`;
+                        if (r.targetKey !== nextKey) {
+                            r.targetKey = nextKey;
+                            r.waypoints = computeWaypoints(r.currentFloor, r.root.position.x, r.root.position.z, target.floor, target.x, target.z);
+                        }
+
+                        const visibleOnCurrentFloor = aFloor === 1 ? (r.currentFloor === 1) : (r.currentFloor === 2);
+                        r.root.visible = visibleOnCurrentFloor;
+
+                        if (r.waypoints.length > 0) {
+                            const wp = r.waypoints[0];
+                            r.currentFloor = wp.floor;
+                            const desiredY = wp.floor === 2 ? 3.92 : 0.14;
+                            const dx = wp.x - r.root.position.x;
+                            const dz = wp.z - r.root.position.z;
+                            const dist = Math.hypot(dx, dz);
+
+                            if (dist > 0.16) {
+                                const moveStep = 4.6 * dt;
+                                r.root.position.x += (dx / dist) * Math.min(moveStep, dist);
+                                r.root.position.z += (dz / dist) * Math.min(moveStep, dist);
+                                r.root.position.y += (desiredY - r.root.position.y) * 0.2;
+                                r.root.rotation.y = Math.atan2(dx, dz);
+
+                                r.walkPhase += dt * 11;
+                                const sw = Math.sin(r.walkPhase) * 0.65;
+                                r.leftLegPivot.rotation.x = sw;
+                                r.rightLegPivot.rotation.x = -sw;
+                                r.leftArmPivot.rotation.x = -sw * 0.75;
+                                r.rightArmPivot.rotation.x = sw * 0.75;
+                                r.bodyGroup.position.y = 0.62 + Math.abs(Math.cos(r.walkPhase * 2)) * 0.04;
+                                r.bodyGroup.rotation.x = 0;
+                            } else {
+                                r.waypoints.shift();
+                            }
+                        } else {
+                            // Shortest-angle smooth rotation so agent cleanly faces their monitor (target.ry)
+                            let angleDiff = target.ry - r.root.rotation.y;
+                            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                            r.root.rotation.y += angleDiff * 0.22;
+
+                            const baseY = r.currentFloor === 2 ? 3.92 : 0.14;
+
+                            if (target.posture === 'sleep') {
+                                r.root.position.y = baseY + 0.34;
+                                r.bodyGroup.rotation.x = -Math.PI / 2;
+                                r.leftLegPivot.rotation.x = 0;
+                                r.rightLegPivot.rotation.x = 0;
+                                r.leftArmPivot.rotation.x = 0;
+                                r.rightArmPivot.rotation.x = 0;
+                            } else if (target.posture === 'sit') {
+                                r.root.position.y = baseY;
+                                r.bodyGroup.rotation.x = 0;
+                                r.bodyGroup.position.y = 0.46;
+                                // Legs bent forward (+Z local), arms reaching forward (+Z local) onto keyboard!
+                                r.leftLegPivot.rotation.x = -Math.PI / 2.2;
+                                r.rightLegPivot.rotation.x = -Math.PI / 2.2;
+                                if (ag.state === 'Working' || ag.state === 'Thinking') {
+                                    r.leftArmPivot.rotation.x = -0.85 + Math.sin(elapsed * 15 + idx) * 0.16;
+                                    r.rightArmPivot.rotation.x = -0.85 + Math.cos(elapsed * 15 + idx) * 0.16;
+                                    r.headGroup.rotation.y = Math.sin(elapsed * 2.2 + idx) * 0.10;
+                                } else {
+                                    r.leftArmPivot.rotation.x = -0.5;
+                                    r.rightArmPivot.rotation.x = -0.5;
+                                    r.headGroup.rotation.y = 0;
+                                }
+                            } else {
+                                r.root.position.y = baseY;
+                                r.bodyGroup.rotation.x = 0;
+                                r.bodyGroup.position.y = 0.62;
+                                r.leftLegPivot.rotation.x = 0;
+                                r.rightLegPivot.rotation.x = 0;
+                                r.leftArmPivot.rotation.x = Math.sin(elapsed * 2 + idx) * 0.08;
+                                r.rightArmPivot.rotation.x = -Math.sin(elapsed * 2 + idx) * 0.08;
+                            }
+                        }
+
+                        // Project 2D Floating Name & Status Bubble
+                        if (r.bubbleEl) {
+                            if (!visibleOnCurrentFloor) {
+                                r.bubbleEl.style.opacity = '0';
+                            } else {
+                                const p = r.root.position.clone();
+                                p.y += 1.68;
+                                p.project(camera);
+                                if (p.z > 1) {
+                                    r.bubbleEl.style.opacity = '0';
+                                } else {
+                                    const sx = (p.x * 0.5 + 0.5) * container.clientWidth;
+                                    const sy = (-(p.y * 0.5) + 0.5) * container.clientHeight;
+                                    r.bubbleEl.style.opacity = '1';
+                                    r.bubbleEl.style.left = `${sx}px`;
+                                    r.bubbleEl.style.top = `${sy}px`;
+                                    const isWalking = r.waypoints.length > 0;
+                                    const genderBadge = ag.gender === 'female' ? '♀' : '♂';
+                                    r.bubbleEl.innerHTML = `
+                                        <div class="flex flex-col items-center group">
+                                            <div class="px-1.5 py-0.5 rounded-md text-[9px] sm:text-[10px] font-mono mb-0.5 shadow bg-slate-900/90 text-cyan-300 border border-cyan-500/30 max-w-[140px] sm:max-w-[175px] truncate">
+                                                ${isWalking ? '🚶 Jalan...' : target.bubble}
+                                            </div>
+                                            <div class="px-2 py-0.5 rounded-full bg-slate-950/95 border border-slate-700 text-white text-[10px] sm:text-[11px] font-semibold flex items-center gap-1 shadow-lg group-hover:scale-105 transition">
+                                                <span class="w-2 h-2 rounded-full" style="background:${ag.color}"></span>
+                                                <span>${ag.name.split(' ')[0]}</span>
+                                                <span class="text-[9px] opacity-75">${genderBadge}</span>
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+                            }
+                        }
+                    });
+
+                    renderer.render(scene, camera);
+                };
+
+                animate();
+
+                const onResize = () => {
+                    if (!container) return;
+                    camera.aspect = container.clientWidth / container.clientHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(container.clientWidth, container.clientHeight);
+                };
+                window.addEventListener('resize', onResize);
+
+                return () => {
+                    cancelAnimationFrame(frameId);
+                    window.removeEventListener('resize', onResize);
+                    renderer.dispose();
+                };
+            }, []);
+
+            // Dynamic Day (Blue Sky + Sun + White Clouds) vs Night (Starfield + Moon + Night Lamps)
+            useEffect(() => {
+                const isNight = darkMode;
+                if (sceneRef.current) {
+                    sceneRef.current.background = new THREE.Color(isNight ? 0x050816 : 0x60a5fa);
+                    sceneRef.current.fog = new THREE.FogExp2(isNight ? 0x050816 : 0x93c5fd, 0.0045);
+                }
+                const sr = skyRefs.current;
+                if (sr.hemi) {
+                    sr.hemi.color.setHex(isNight ? 0x1e293b : 0xe0f2fe);
+                    sr.hemi.groundColor.setHex(isNight ? 0x090d16 : 0x166534);
+                    sr.hemi.intensity = isNight ? 0.42 : 0.95;
+                }
+                if (sr.dirLight) {
+                    sr.dirLight.color.setHex(isNight ? 0x93c5fd : 0xfffbeb);
+                    sr.dirLight.intensity = isNight ? 0.38 : 1.15;
+                }
+                if (sr.sunGroup) sr.sunGroup.visible = !isNight;
+                if (sr.moonGroup) sr.moonGroup.visible = isNight;
+                if (sr.starsMesh) sr.starsMesh.visible = isNight;
+                sr.cloudMats.forEach(m => {
+                    m.color.setHex(isNight ? 0x1e293b : 0xffffff);
+                    m.opacity = isNight ? 0.55 : 0.92;
+                });
+                sr.nightLights.forEach(l => { l.intensity = isNight ? 1.3 : 0.05; });
+            }, [darkMode]);
+
+            useEffect(() => {
+                if (floor2GroupRef.current) {
+                    floor2GroupRef.current.visible = activeFloor === 2;
+                }
+                if (controlsRef.current) {
+                    controlsRef.current.target.set(0, activeFloor === 2 ? 3.8 : 0, 0);
+                }
+            }, [activeFloor]);
+
+            useEffect(() => {
+                if (controlsRef.current && window.THREE) {
+                    controlsRef.current.mouseButtons.LEFT = panMode ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+                }
+            }, [panMode]);
+
+            useEffect(() => {
+                if (cameraRef.current && controlsRef.current) {
+                    cameraRef.current.position.set(0, 34, 42);
+                    controlsRef.current.target.set(0, activeFloor === 2 ? 3.8 : 0, 0);
+                }
+            }, [resetTrigger]);
+
+            useEffect(() => {
+                if (!focusAgentId) return;
+                const r = rigsRef.current[focusAgentId];
+                if (r && cameraRef.current && controlsRef.current) {
+                    if (r.currentFloor !== activeFloor) setActiveFloor(r.currentFloor);
+                    const p = r.root.position;
+                    controlsRef.current.target.set(p.x, p.y + 1, p.z);
+                    cameraRef.current.position.set(p.x + 5.5, p.y + 7.5, p.z + 8.0);
+                }
+            }, [focusAgentId]);
+
+            return (
+                <div className="relative w-full h-full">
+                    <div ref={mountRef} className="w-full h-full" />
+                    <div ref={labelsRef} className="absolute inset-0 pointer-events-none overflow-hidden" />
+                </div>
+            );
+        }
+
+        // ============================================================================
+        // 6. MAIN APPLICATION (MOBILE-READY + 19-AGENT FORUM & SECRETARY RECAP)
+        // ============================================================================
+        function App() {
+            const [darkMode, setDarkMode] = useState(false); // Start in sunny Blue-Sky Daytime so greenery & sun shine!
+            const [activeFloor, setActiveFloor] = useState(1);
+            const [sleepMode, setSleepMode] = useState(false);
+            const [loungeMode, setLoungeMode] = useState(false);
+            const [panMode, setPanMode] = useState(false);
+            const [resetTrigger, setResetTrigger] = useState(0);
+            const [focusAgentId, setFocusAgentId] = useState(null);
+            const [idleTick, setIdleTick] = useState(0);
+
+            const [agents, setAgents] = useState(INITIAL_19_AGENTS);
+            const [selectedAgentId, setSelectedAgentId] = useState('sasa-sekre');
+            const [categoryFilter, setCategoryFilter] = useState('ALL');
+            const [sideTab, setSideTab] = useState('Forum'); // 'Forum' | 'Chat' | 'Directory' | 'Rooms'
+            const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
+
+            // Individual Chat Histories
+            const [chatHistories, setChatHistories] = useState({
+                'sasa-sekre': [
+                    { sender: 'agent', text: 'Halo Bos Nadzar! Aku Sasa (Sekretaris Eksekutif). Semua 19 Agent sekarang sudah duduk menghadap layar monitor masing-masing di kantor baru yang jauh lebih luas dan asri! Mau diskusi bareng semua agent atau tanya matkul tertentu?' }
+                ]
+            });
+            const [chatInput, setChatInput] = useState('');
+            const [isSending, setIsSending] = useState(false);
+
+            // 19-Agent Townhall Forum & Secretary Recap State
+            const [forumTopic, setForumTopic] = useState('');
+            const [forumResponderId, setForumResponderId] = useState('sasa-sekre');
+            const [isForumLoading, setIsForumLoading] = useState(false);
+            const [copyBadge, setCopyBadge] = useState(false);
+            const [forumLogs, setForumLogs] = useState([
+                {
+                    id: 'init-forum',
+                    topic: 'Status Kesiapan Semester 5 & Integrasi 3 Projek Utama (AIoT, Kelistrikan, Film)',
+                    responderName: 'Sasa (Sekretaris)',
+                    responderRole: 'Sekretaris Eksekutif & Notulen Utama',
+                    timestamp: 'Baru saja',
+                    recapText: `📋 **REKAPITULASI FORUM 19 AGENT — Disusun oleh Sasa (Sekretaris)**\n\nHalo Bos Nadzar! Seluruh 19 Agent telah melapor dari meja kerjanya masing-masing:\n- **Divisi 10 Matkul Smt 5 (Dipimpin Raka Komti & Tiara):** Siap membantu perhitungan Elektronika 2, Sistem Tenaga S1TE-08-A, Sinyal Diskret, Otomasi PLC, AI, IoT, Embedded, EkoBisnis, KWN, dan Laporan Praktikum.\n- **Divisi 3 Projek (Kevin AIoT, Doni Kelistrikan, Maya Film):** Siap merancang prototipe alat, panel kontrol daya MCB/Kontaktor, dan storyboard video dokumenter.\n- **Divisi Kepanitiaan (Dimas):** Siap menyusun TOR, Proposal Sponsorship, dan Rundown acara.\n\nSilakan ketik topik diskusi di bawah, dan aku (atau penanggap pilihanmu) akan merangkum jawaban dari seluruh 19 Agent sekaligus!`
+                }
+            ]);
+
+            // Modals: API Key Setup & Vercel Deployment Guide
+            const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('nadzar_gemini_key') || '');
+            const [showApiModal, setShowApiModal] = useState(false);
+            const [showVercelModal, setShowVercelModal] = useState(false);
+
+            useEffect(() => {
+                const t = setInterval(() => setIdleTick(c => c + 1), 28000);
+                return () => clearInterval(t);
+            }, []);
+
+            const selectedAgent = useMemo(
+                () => agents.find(a => a.id === selectedAgentId) || agents[0],
+                [agents, selectedAgentId]
+            );
+
+            const handleSelectAgent = (id) => {
+                setSelectedAgentId(id);
+                setFocusAgentId(id);
+                setSideTab('Chat');
+                setMobilePanelOpen(true);
+                setChatHistories(prev => {
+                    if (prev[id]) return prev;
+                    const ag = agents.find(a => a.id === id);
+                    return {
+                        ...prev,
+                        [id]: [
+                            { sender: 'agent', text: `Halo Bos Nadzar! Aku **${ag.name}** (${ag.role}) di **Ruang ${ag.room}**. ${ag.funnyTrait} Ada tugas atau projek yang mau kita bedah bareng?` }
+                        ]
+                    };
+                });
+            };
+
+            // Run 19-Agent Townhall Discussion & Secretary Recap
+            const handleRunForumDiscussion = async (e, presetTopic) => {
+                if (e) e.preventDefault();
+                const topic = (presetTopic || forumTopic).trim();
+                if (!topic || isForumLoading) return;
+
+                setForumTopic('');
+                setIsForumLoading(true);
+                setSleepMode(false);
+                setLoungeMode(false);
+                setActiveFloor(1);
+
+                // Bring all 19 agents into Meeting / Collaborating state in the Glass Townhall!
+                setAgents(prev => prev.map(a => ({
+                    ...a,
+                    state: 'Meeting',
+                    currentTask: `Diskusi Forum: "${topic.slice(0, 22)}..."`
+                })));
+
+                const responder = agents.find(a => a.id === forumResponderId) || agents[1];
+                setFocusAgentId(responder.id);
+
+                try {
+                    const recapText = await callGeminiForumRecap(topic, responder, agents, customApiKey);
+                    setForumLogs(prev => [
+                        {
+                            id: `forum-${Date.now()}`,
+                            topic,
+                            responderName: responder.name,
+                            responderRole: responder.role,
+                            timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                            recapText
+                        },
+                        ...prev
+                    ]);
+                } finally {
+                    setIsForumLoading(false);
+                }
+            };
+
+            const copyTextToClipboard = (txt) => {
+                const ta = document.createElement('textarea');
+                ta.value = txt;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                setCopyBadge(true);
+                setTimeout(() => setCopyBadge(false), 2000);
+            };
+
+            const handleSendMessage = async (e, quickPrompt) => {
+                if (e) e.preventDefault();
+                const text = (quickPrompt || chatInput).trim();
+                if (!text || isSending) return;
+
+                const targetId = selectedAgent.id;
+                const currentHistory = chatHistories[targetId] || [];
+                setChatInput('');
+                setIsSending(true);
+
+                setChatHistories(prev => ({
+                    ...prev,
+                    [targetId]: [...(prev[targetId] || []), { sender: 'user', text }]
+                }));
+
+                setAgents(prev => prev.map(a => a.id === targetId ? { ...a, state: 'Thinking', currentTask: `Menjawab: "${text.slice(0, 28)}..."` } : a));
+
+                try {
+                    const reply = await callGeminiAgent(selectedAgent, text, currentHistory, customApiKey);
+                    setChatHistories(prev => ({
+                        ...prev,
+                        [targetId]: [...(prev[targetId] || []), { sender: 'agent', text: reply }]
+                    }));
+                    setAgents(prev => prev.map(a => a.id === targetId ? { ...a, state: 'Working', currentTask: `Selesai menjawab pertanyaan Nadzar` } : a));
+                } catch (err) {
+                    setChatHistories(prev => ({
+                        ...prev,
+                        [targetId]: [
+                            ...(prev[targetId] || []),
+                            { sender: 'agent', text: `⚠️ Maaf Bos Nadzar, koneksi ke Gemini API terkendala (${err.message}). Pastikan API Key dari Google AI Studio sudah dimasukkan lewat tombol "🔑 API Key" di kanan atas ya!` }
+                        ]
+                    }));
+                    setAgents(prev => prev.map(a => a.id === targetId ? { ...a, state: 'Working' } : a));
+                } finally {
+                    setIsSending(false);
+                }
+            };
+
+            const triggerTeamAction = (mode) => {
+                if (mode === 'work_all') {
+                    setSleepMode(false);
+                    setLoungeMode(false);
+                    setActiveFloor(1);
+                    setAgents(prev => prev.map(a => ({ ...a, state: 'Working' })));
+                } else if (mode === 'meeting_all') {
+                    setSleepMode(false);
+                    setLoungeMode(false);
+                    setActiveFloor(1);
+                    setAgents(prev => prev.map(a => ({ ...a, state: 'Meeting' })));
+                } else if (mode === 'park_relax') {
+                    setSleepMode(false);
+                    setLoungeMode(false);
+                    setActiveFloor(1);
+                    setAgents(prev => prev.map((a, i) => ({ ...a, state: i % 2 === 0 ? 'Idle' : 'Working' })));
+                } else if (mode === 'lounge_f2') {
+                    setSleepMode(false);
+                    setLoungeMode(true);
+                    setActiveFloor(2);
+                    setAgents(prev => prev.map((a, i) => ({ ...a, state: i % 2 === 0 ? 'Idle' : 'Working' })));
+                } else if (mode === 'sleep_f2') {
+                    const nextSleep = !sleepMode;
+                    setSleepMode(nextSleep);
+                    setLoungeMode(false);
+                    if (nextSleep) {
+                        setActiveFloor(2);
+                        setAgents(prev => prev.map(a => ({ ...a, state: 'Idle' })));
+                    } else {
+                        setActiveFloor(1);
+                        setAgents(prev => prev.map(a => ({ ...a, state: 'Working' })));
+                    }
+                }
+            };
+
+            const saveApiKey = (val) => {
+                setCustomApiKey(val);
+                localStorage.setItem('nadzar_gemini_key', val);
+                setShowApiModal(false);
+            };
+
+            return (
+                <div className="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
+                    
+                    {/* ================================================================ */}
+                    {/* TOP NAVIGATION & ACTION BAR (MOBILE & DESKTOP RESPONSIVE)        */}
+                    {/* ================================================================ */}
+                    <header className="h-14 shrink-0 px-3 sm:px-4 border-b border-slate-800 bg-slate-900/95 backdrop-blur flex items-center justify-between gap-2 z-30">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-emerald-600 flex items-center justify-center font-bold text-white shadow shrink-0">
+                                N
+                            </div>
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="font-bold text-xs sm:text-sm tracking-tight truncate">AICA — Nadzar's 19-Agent Mega Office</span>
+                                    <span className="hidden md:inline-block text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                        19 Agents • Park & Sky 3D
+                                    </span>
+                                </div>
+                                <p className="text-[10px] text-slate-400 truncate hidden sm:block">
+                                    11 Matkul Smt 5 • 3 Projek (AIoT, Listrik, Film) • Organisasi • Rekap Sekretaris Sasa
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Quick Simulation Triggers (Desktop) */}
+                        <div className="hidden xl:flex items-center gap-1 bg-slate-800/90 p-1 rounded-xl border border-slate-700 text-[11px]">
+                            <button onClick={() => triggerTeamAction('work_all')} className="px-2.5 py-1 rounded-lg hover:bg-sky-500/20 text-sky-300 font-medium transition">
+                                💻 Semua Kerja (Hadap Layar)
+                            </button>
+                            <button onClick={() => triggerTeamAction('meeting_all')} className="px-2.5 py-1 rounded-lg hover:bg-emerald-500/20 text-emerald-300 font-medium transition">
+                                🏛️ Kumpul Rapat 19 Agent
+                            </button>
+                            <button onClick={() => triggerTeamAction('park_relax')} className="px-2.5 py-1 rounded-lg hover:bg-green-500/20 text-green-300 font-medium transition">
+                                🌳 Jalan di Taman Hijau
+                            </button>
+                            <button onClick={() => triggerTeamAction('lounge_f2')} className="px-2.5 py-1 rounded-lg hover:bg-purple-500/20 text-purple-300 font-medium transition">
+                                🎮 Lounge Lt.2
+                            </button>
+                            <button onClick={() => triggerTeamAction('sleep_f2')} className={`px-2.5 py-1 rounded-lg font-medium transition ${sleepMode ? 'bg-indigo-600 text-white' : 'hover:bg-indigo-500/20 text-indigo-300'}`}>
+                                💤 Tidur Lt.2
+                            </button>
+                        </div>
+
+                        {/* Right Controls: Day/Night Sky Toggle, API Key, Vercel Guide */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                                onClick={() => setDarkMode(d => !d)}
+                                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition ${
+                                    darkMode
+                                        ? 'bg-indigo-950/90 border-indigo-500/40 text-indigo-200'
+                                        : 'bg-sky-500/20 border-sky-400/50 text-sky-300'
+                                }`}
+                                title="Ubah Langit Siang (Matahari & Awan) / Malam (Bulan & Bintang)"
+                            >
+                                <span>{darkMode ? '🌙 Malam Berbintang' : '☀️ Siang Cerah'}</span>
+                            </button>
+
+                            <button
+                                onClick={() => setShowApiModal(true)}
+                                className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1 transition ${
+                                    customApiKey ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                                }`}
+                            >
+                                🔑 <span className="hidden sm:inline">{customApiKey ? 'API Key Aktif' : 'API Key'}</span>
+                            </button>
+
+                            <button
+                                onClick={() => setShowVercelModal(true)}
+                                className="px-2.5 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold shadow flex items-center gap-1 transition"
+                            >
+                                🚀 <span className="hidden sm:inline">Vercel</span>
+                            </button>
+                        </div>
+                    </header>
+
+                    {/* ================================================================ */}
+                    {/* MAIN SPLIT LAYOUT: 3D PARK & OFFICE (LEFT) + HUB DRAWER (RIGHT)  */}
+                    {/* ================================================================ */}
+                    <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+                        
+                        {/* LEFT: 3D INTERACTIVE MEGA OFFICE & GREEN PARK VIEWPORT */}
+                        <div className="flex-1 relative overflow-hidden">
+                            <ThreeVirtualOffice
+                                agents={agents}
+                                darkMode={darkMode}
+                                activeFloor={activeFloor}
+                                setActiveFloor={setActiveFloor}
+                                sleepMode={sleepMode}
+                                loungeMode={loungeMode}
+                                panMode={panMode}
+                                resetTrigger={resetTrigger}
+                                focusAgentId={focusAgentId}
+                                onSelectAgent={handleSelectAgent}
+                                idleTick={idleTick}
+                            />
+
+                            {/* TOP-LEFT ROOM LEGEND & QUICK MOBILE ACTIONS */}
+                            <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center gap-1.5 overflow-x-auto pb-1 pointer-events-none no-scrollbar">
+                                {ROOM_ZONES.map(rm => (
+                                    <button
+                                        key={rm.id}
+                                        onClick={() => {
+                                            setActiveFloor(rm.floor);
+                                            const firstInRoom = agents.find(a => a.room === rm.id);
+                                            if (firstInRoom) setFocusAgentId(firstInRoom.id);
+                                        }}
+                                        className="pointer-events-auto shrink-0 px-2.5 py-1 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-[10px] sm:text-[11px] font-medium flex items-center gap-1.5 shadow"
+                                    >
+                                        <span className="w-2 h-2 rounded-full" style={{ background: rm.color }}></span>
+                                        <span>{rm.name}</span>
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* BOTTOM FLOATING CAMERA, FLOOR & MOBILE DRAWER CONTROLS */}
+                            <div className="absolute bottom-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+                                <div className="pointer-events-auto flex items-center gap-1 bg-slate-900/90 backdrop-blur p-1 rounded-xl border border-slate-700 shadow-xl text-[11px]">
+                                    <button
+                                        onClick={() => setActiveFloor(1)}
+                                        className={`px-2.5 py-1.5 rounded-lg font-bold transition ${activeFloor === 1 ? 'bg-sky-500 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
+                                    >
+                                        🏢 Lt.1 + Taman
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveFloor(2)}
+                                        className={`px-2.5 py-1.5 rounded-lg font-bold transition ${activeFloor === 2 ? 'bg-sky-500 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
+                                    >
+                                        🛋️ Lt.2 (Kasur & Lounge)
+                                    </button>
+                                    <button
+                                        onClick={() => triggerTeamAction('work_all')}
+                                        className="px-2 py-1.5 rounded-lg text-emerald-300 hover:bg-slate-800 font-semibold xl:hidden"
+                                        title="Semua Kerja Menghadap Monitor"
+                                    >
+                                        💻 Kerja
+                                    </button>
+                                </div>
+
+                                <div className="pointer-events-auto flex items-center gap-1 bg-slate-900/90 backdrop-blur p-1 rounded-xl border border-slate-700 shadow-xl text-[11px]">
+                                    <button
+                                        onClick={() => setPanMode(p => !p)}
+                                        className={`px-2.5 py-1.5 rounded-lg font-medium ${panMode ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'}`}
+                                    >
+                                        ✋ Geser {panMode ? 'ON' : ''}
+                                    </button>
+                                    <button
+                                        onClick={() => setResetTrigger(c => c + 1)}
+                                        className="px-2.5 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800 font-medium"
+                                    >
+                                        🔄 Reset
+                                    </button>
+                                    {/* Mobile Drawer Toggle Button */}
+                                    <button
+                                        onClick={() => setMobilePanelOpen(o => !o)}
+                                        className="lg:hidden px-3 py-1.5 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-bold shadow"
+                                    >
+                                        {mobilePanelOpen ? '🔽 Tutup Panel' : '💬 Diskusi & 19 Agent'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* RIGHT / MOBILE SLIDE-OVER: FORUM DISKUSI 19 AGENT & REKAP SEKRE + CHAT */}
+                        <aside
+                            className={`w-full lg:w-[460px] shrink-0 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col z-30 transition-all duration-200 ${
+                                mobilePanelOpen ? 'h-[64vh] lg:h-full' : 'h-0 lg:h-full overflow-hidden'
+                            }`}
+                        >
+                            {/* Navigation Tabs */}
+                            <div className="p-2 border-b border-slate-800 flex items-center justify-between gap-1 bg-slate-950/70 overflow-x-auto">
+                                <div className="flex gap-1">
+                                    {[
+                                        { id: 'Forum', label: '🏛️ Diskusi 19 Agent (Sekre)' },
+                                        { id: 'Chat', label: '💬 Chat Personal' },
+                                        { id: 'Directory', label: '👥 19 Agent' },
+                                        { id: 'Rooms', label: '🚪 Ruang' }
+                                    ].map(t => (
+                                        <button
+                                            key={t.id}
+                                            onClick={() => setSideTab(t.id)}
+                                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold shrink-0 transition ${
+                                                sideTab === t.id ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                                            }`}
+                                        >
+                                            {t.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <button
+                                    onClick={() => setMobilePanelOpen(false)}
+                                    className="lg:hidden p-1.5 rounded-lg bg-slate-800 text-slate-300"
+                                >
+                                    <Icon name="chevron-down" className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            {/* ============================================================ */}
+                            {/* TAB 0: 19-AGENT FORUM DISCUSSION & SECRETARY RECAP           */}
+                            {/* ============================================================ */}
+                            {sideTab === 'Forum' && (
+                                <div className="flex-1 flex flex-col overflow-hidden">
+                                    <div className="p-3 bg-gradient-to-r from-sky-950/80 to-indigo-950/80 border-b border-slate-800 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h3 className="font-bold text-xs sm:text-sm text-sky-300 flex items-center gap-1.5">
+                                                    🏛️ Forum Diskusi Semua Agent & Rekap Sekretaris
+                                                </h3>
+                                                <p className="text-[11px] text-slate-300">
+                                                    Lempar 1 topik ke 19 Agent sekaligus — Juru bicara pilihanmu akan merangkum semua jawaban!
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Responder Selector (Defaults to Sasa - Sekretaris) */}
+                                        <div className="flex items-center gap-2 pt-1">
+                                            <label className="text-[11px] text-amber-300 font-semibold shrink-0">
+                                                🎤 Penanggap & Perangkum:
+                                            </label>
+                                            <select
+                                                value={forumResponderId}
+                                                onChange={e => setForumResponderId(e.target.value)}
+                                                className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-medium"
+                                            >
+                                                <option value="sasa-sekre">⭐ Sasa (Sekretaris Eksekutif — Default Rekap)</option>
+                                                <option value="bram-coo">⚡ Bram (Tangan Kanan / COO Taktis)</option>
+                                                <option value="tiara-koord">📚 Tiara (Koordinator Akademik Smt 5)</option>
+                                                <option value="raka-komti">📢 Raka (Pemimpin Smt 5 / Komti)</option>
+                                                {agents.map(a => (
+                                                    <option key={a.id} value={a.id}>
+                                                        #{a.num} {a.name} ({a.role})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Forum Recap Feed */}
+                                    <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
+                                        {isForumLoading && (
+                                            <div className="p-3.5 rounded-2xl bg-slate-800/90 border border-sky-500/40 text-sky-300 font-mono text-xs animate-pulse space-y-1">
+                                                <div>🏛️ Mengumpulkan seluruh 19 Agent ke Hall Rapat Kaca...</div>
+                                                <div>📝 {agents.find(a => a.id === forumResponderId)?.name} sedang merangkum pendapat tiap divisi...</div>
+                                            </div>
+                                        )}
+
+                                        {forumLogs.map(item => (
+                                            <div key={item.id} className="p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700 space-y-2.5 shadow-lg">
+                                                <div className="flex items-start justify-between gap-2 border-b border-slate-700/80 pb-2">
+                                                    <div>
+                                                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/20 text-sky-300">
+                                                            Topik CEO Nadzar • {item.timestamp}
+                                                        </span>
+                                                        <h4 className="font-bold text-slate-100 mt-1">{item.topic}</h4>
+                                                        <p className="text-[11px] text-pink-400 font-medium">
+                                                            Dirangkum oleh: {item.responderName} ({item.responderRole})
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => copyTextToClipboard(item.recapText)}
+                                                        className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-950 border border-slate-700 text-[10px] text-emerald-300 shrink-0"
+                                                    >
+                                                        {copyBadge ? '✅ Tersalin!' : '📋 Copy Rekap'}
+                                                    </button>
+                                                </div>
+                                                <div className="whitespace-pre-wrap leading-relaxed text-slate-200 text-xs">
+                                                    {item.recapText}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Preset Topics & Forum Input */}
+                                    <div className="p-2.5 border-t border-slate-800 bg-slate-950 space-y-2">
+                                        <div className="flex gap-1.5 overflow-x-auto pb-1">
+                                            {[
+                                                'Rancang projek Smart Farming AIoT + Panel Listrik + Laporan Praktikum + Hitung BEP + Video Film!',
+                                                'Strategi belajar & bagi waktu 10 Matkul Semester 5 biar IPK 4.00 sambil garap 3 projek!',
+                                                'Bikin konsep acara pameran projek Teknik Elektro + RAB + Proposal + Dokumentasi Sinematik!'
+                                            ].map((preset, idx) => (
+                                                <button
+                                                    key={idx}
+                                                    onClick={() => handleRunForumDiscussion(null, preset)}
+                                                    className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] text-sky-300 shrink-0"
+                                                >
+                                                    💡 {preset.slice(0, 48)}...
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        <form onSubmit={e => handleRunForumDiscussion(e)} className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={forumTopic}
+                                                onChange={e => setForumTopic(e.target.value)}
+                                                placeholder="Ketik topik diskusi untuk seluruh 19 Agent..."
+                                                className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs focus:outline-none focus:border-sky-500"
+                                            />
+                                            <button
+                                                type="submit"
+                                                disabled={isForumLoading}
+                                                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 disabled:opacity-50 text-white font-bold text-xs shadow shrink-0"
+                                            >
+                                                Diskusikan & Rekap
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ============================================================ */}
+                            {/* TAB 1: LIVE CHAT WITH SELECTED SPECIALIST AGENT              */}
+                            {/* ============================================================ */}
+                            {sideTab === 'Chat' && (
+                                <div className="flex-1 flex flex-col overflow-hidden">
+                                    <div className="p-3 bg-slate-800/60 border-b border-slate-800 flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <div
+                                                className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0 shadow"
+                                                style={{ backgroundColor: selectedAgent.color }}
+                                            >
+                                                #{selectedAgent.num}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-1.5">
+                                                    <h3 className="font-bold text-sm truncate">{selectedAgent.name}</h3>
+                                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-700 text-cyan-300 font-mono">
+                                                        {selectedAgent.gender === 'female' ? '♀ Cewek' : '♂ Cowok'}
+                                                    </span>
+                                                </div>
+                                                <p className="text-[11px] text-slate-400 truncate">{selectedAgent.role} • Ruang {selectedAgent.room}</p>
+                                                <p className="text-[10px] text-amber-300 truncate">👕 {selectedAgent.accessory}</p>
+                                            </div>
+                                        </div>
+
+                                        <select
+                                            value={selectedAgent.state}
+                                            onChange={e => {
+                                                const st = e.target.value;
+                                                setAgents(prev => prev.map(a => a.id === selectedAgent.id ? { ...a, state: st } : a));
+                                            }}
+                                            className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-[11px] font-mono text-cyan-300"
+                                        >
+                                            <option value="Working">Working</option>
+                                            <option value="Meeting">Meeting</option>
+                                            <option value="Idle">Idle / Taman</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="px-3 py-2 border-b border-slate-800 flex items-center gap-1.5 overflow-x-auto bg-slate-950/40">
+                                        {agents.map(ag => (
+                                            <button
+                                                key={ag.id}
+                                                onClick={() => handleSelectAgent(ag.id)}
+                                                className={`px-2.5 py-1 rounded-full text-[11px] font-medium shrink-0 flex items-center gap-1 border transition ${
+                                                    selectedAgent.id === ag.id
+                                                        ? 'bg-sky-500 text-white border-sky-400 shadow'
+                                                        : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-800'
+                                                }`}
+                                            >
+                                                <span className="w-2 h-2 rounded-full" style={{ background: ag.color }}></span>
+                                                <span>{ag.name.split(' ')[0]}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
+                                        <div className="p-2.5 rounded-xl bg-slate-800/50 border border-slate-700/70 text-[11px] text-slate-300">
+                                            <span className="font-bold text-amber-400">Karakter Unik: </span>{selectedAgent.funnyTrait}
+                                        </div>
+
+                                        {(chatHistories[selectedAgent.id] || []).map((msg, idx) => (
+                                            <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                                <div
+                                                    className={`max-w-[86%] p-3 rounded-2xl whitespace-pre-wrap leading-relaxed ${
+                                                        msg.sender === 'user'
+                                                            ? 'bg-sky-600 text-white rounded-br-xs'
+                                                            : 'bg-slate-800 border border-slate-700 text-slate-100 rounded-bl-xs'
+                                                    }`}
+                                                >
+                                                    {msg.text}
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        {isSending && (
+                                            <div className="flex justify-start">
+                                                <div className="px-3 py-2 rounded-2xl bg-slate-800 border border-cyan-500/40 text-cyan-300 font-mono text-[11px] animate-pulse">
+                                                    🧠 {selectedAgent.name.split(' ')[0]} sedang mengetik di depan monitornya...
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="p-2.5 border-t border-slate-800 bg-slate-950 space-y-2">
+                                        <div className="flex gap-1.5 overflow-x-auto pb-1">
+                                            {[
+                                                'Jelaskan materi inti & rumus terpenting di bidangmu!',
+                                                'Bantuin bikin kerangka laporan / tugas minggu ini dong',
+                                                'Kasih ide projek keren sesuai keahlianmu!'
+                                            ].map((q, i) => (
+                                                <button
+                                                    key={i}
+                                                    onClick={() => handleSendMessage(null, q)}
+                                                    className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] text-slate-300 shrink-0"
+                                                >
+                                                    ✨ {q}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        <form onSubmit={e => handleSendMessage(e)} className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={chatInput}
+                                                onChange={e => setChatInput(e.target.value)}
+                                                placeholder={`Tanya ${selectedAgent.name}...`}
+                                                className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs focus:outline-none focus:border-sky-500"
+                                            />
+                                            <button
+                                                type="submit"
+                                                disabled={isSending}
+                                                className="px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-white font-bold text-xs shadow"
+                                            >
+                                                Kirim
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* TAB 2: DIRECTORY OF ALL 19 AGENTS */}
+                            {sideTab === 'Directory' && (
+                                <div className="flex-1 flex flex-col overflow-hidden">
+                                    <div className="p-2.5 border-b border-slate-800 flex gap-1 overflow-x-auto text-[11px]">
+                                        {['ALL', 'Core Leadership', 'Matkul Semester 5', 'Divisi Projek', 'Organisasi & Event'].map(cat => (
+                                            <button
+                                                key={cat}
+                                                onClick={() => setCategoryFilter(cat)}
+                                                className={`px-2.5 py-1 rounded-lg font-medium shrink-0 ${
+                                                    categoryFilter === cat ? 'bg-sky-500 text-white' : 'bg-slate-800 text-slate-400'
+                                                }`}
+                                            >
+                                                {cat}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto p-3 space-y-2 text-xs">
+                                        {agents
+                                            .filter(a => categoryFilter === 'ALL' || a.category === categoryFilter)
+                                            .map(ag => (
+                                                <div
+                                                    key={ag.id}
+                                                    onClick={() => handleSelectAgent(ag.id)}
+                                                    className="p-3 rounded-xl bg-slate-800/70 hover:bg-slate-800 border border-slate-700/80 hover:border-sky-500 cursor-pointer transition space-y-1"
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="font-bold flex items-center gap-2">
+                                                            <span className="w-2.5 h-2.5 rounded-full" style={{ background: ag.color }}></span>
+                                                            #{ag.num} — {ag.name}
+                                                        </span>
+                                                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 text-cyan-300">
+                                                            {ag.gender === 'female' ? '♀ Cewek' : '♂ Cowok'} • {ag.room}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-[11px] text-sky-400 font-medium">{ag.role}</div>
+                                                    <div className="text-[11px] text-slate-400">👕 Outfit: {ag.accessory}</div>
+                                                    <div className="text-[11px] text-amber-300/90 italic">"{ag.funnyTrait}"</div>
+                                                </div>
+                                            ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* TAB 3: ROOM ZONES & PARK GREENERY BREAKDOWN */}
+                            {sideTab === 'Rooms' && (
+                                <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
+                                    {ROOM_ZONES.map(rm => {
+                                        const roomAgents = agents.filter(a => a.room === rm.id);
+                                        return (
+                                            <div key={rm.id} className="p-3 rounded-xl bg-slate-800/80 border border-slate-700 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="font-bold text-sm flex items-center gap-2">
+                                                        <span className="w-3 h-3 rounded-full" style={{ background: rm.color }}></span>
+                                                        {rm.name}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => setActiveFloor(rm.floor)}
+                                                        className="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono text-[10px]"
+                                                    >
+                                                        Lihat Lantai {rm.floor}
+                                                    </button>
+                                                </div>
+                                                {rm.id === 'Lantai2' ? (
+                                                    <p className="text-slate-300 text-[11px]">
+                                                        Dilengkapi 19 Kasur Dormitory + Home Theater & Sofa L + Pojok PS5 Beanbag + Panggung Musik Akustik + Rooftop Cafe Bar + Karpet Lesehan + Balkon Hammock.
+                                                    </p>
+                                                ) : (
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {roomAgents.map(ra => (
+                                                            <button
+                                                                key={ra.id}
+                                                                onClick={() => handleSelectAgent(ra.id)}
+                                                                className="px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-950 border border-slate-700 text-[11px]"
+                                                            >
+                                                                {ra.name}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </aside>
+                    </div>
+
+                    {/* ================================================================ */}
+                    {/* MODAL 1: GOOGLE AI STUDIO API KEY CONFIGURATION                  */}
+                    {/* ================================================================ */}
+                    {showApiModal && (
+                        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+                            <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-5 space-y-4 text-xs shadow-2xl">
+                                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                                    <h3 className="font-bold text-sm flex items-center gap-2">
+                                        🔑 Hubungkan API Key Google AI Studio (Gratis)
+                                    </h3>
+                                    <button onClick={() => setShowApiModal(false)} className="p-1 rounded hover:bg-slate-800">
+                                        <Icon name="x" className="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <p className="text-slate-300 leading-relaxed">
+                                    Tempelkan <b>GEMINI_API_KEY</b> yang sudah kamu buat di <code className="text-sky-400">aistudio.google.com</code>. Aplikasi ini otomatis memakai model gratis hemat kuota <b>gemini-2.5-flash</b>.
+                                </p>
+                                <input
+                                    type="password"
+                                    value={customApiKey}
+                                    onChange={e => setCustomApiKey(e.target.value)}
+                                    placeholder="AIzaSy..."
+                                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 font-mono text-xs"
+                                />
+                                <div className="flex justify-end gap-2 pt-2">
+                                    <button
+                                        onClick={() => saveApiKey('')}
+                                        className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300"
+                                    >
+                                        Reset / Pakai Default
+                                    </button>
+                                    <button
+                                        onClick={() => saveApiKey(customApiKey)}
+                                        className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+                                    >
+                                        Simpan & Aktifkan 19 Agent
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ================================================================ */}
+                    {/* MODAL 2: STEP-BY-STEP VERCEL DEPLOYMENT GUIDE                    */}
+                    {/* ================================================================ */}
+                    {showVercelModal && (
+                        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+                            <div className="w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 text-xs shadow-2xl max-h-[88vh] overflow-y-auto">
+                                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                                    <h3 className="font-bold text-base text-sky-400">
+                                        🚀 Tata Cara Publish Kantor 19 Agent Nadzar ke Vercel (Gratis Rp 0)
+                                    </h3>
+                                    <button onClick={() => setShowVercelModal(false)} className="p-1 rounded hover:bg-slate-800">
+                                        <Icon name="x" className="w-4 h-4" />
+                                    </button>
+                                </div>
+
+                                <div className="space-y-3 text-slate-200 leading-relaxed">
+                                    <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                                        <div className="font-bold text-emerald-400">Cara 1: Langsung Upload File Ini (Paling Cepat - 2 Menit!)</div>
+                                        <ol className="list-decimal list-inside space-y-1 text-slate-300">
+                                            <li>Simpan kode aplikasi ini ke sebuah folder di laptopmu dengan nama file <b><code>index.html</code></b>.</li>
+                                            <li>Buka GitHub.com, buat repository baru (misal: <code>aica-nadzar-office</code>), lalu upload file <code>index.html</code> tersebut.</li>
+                                            <li>Buka <b>vercel.com</b> → Login pakai akun GitHub kamu → Klik <b>Add New Project</b> → Pilih repo <code>aica-nadzar-office</code>.</li>
+                                            <li>Klik <b>Deploy</b>! Dalam 30 detik, web kamu langsung live (misal: <code>aica-nadzar-office.vercel.app</code>).</li>
+                                            <li>Buka link Vercel-nya, klik tombol <b>🔑 Set Gemini API Key</b> di pojok kanan atas, masukkan API Key Google AI Studio kamu, dan langsung mainkan!</li>
+                                        </ol>
+                                    </div>
+
+                                    <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                                        <div className="font-bold text-sky-400">Cara 2: Pakai Next.js + Environment Variable Server (Tanpa Input Key di Browser)</div>
+                                        <p className="text-slate-400">Kalau kamu ingin API Key langsung ditanam di server Vercel agar tidak perlu mengetik ulang saat ganti HP/laptop:</p>
+                                        <pre className="p-3 rounded-lg bg-slate-900 border border-slate-800 font-mono text-[11px] overflow-x-auto text-cyan-300">{`npx create-next-app@latest aica-nadzar
+cd aica-nadzar
+npm install three lucide-react @google/genai
+git add . && git commit -m "init 19 agents office"
+git push origin main`}</pre>
+                                        <p className="text-slate-300">
+                                            Lalu di dashboard <b>Vercel → Settings → Environment Variables</b>, tambahkan:
+                                            <br />Nama: <code className="text-amber-300">GEMINI_API_KEY</code> | Value: <code className="text-emerald-300">AIzaSy_Key_Google_AI_Studio_Kamu</code>.
+                                        </p>
+                                    </div>
+
+                                    <div className="p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-500/30 space-y-1">
+                                        <div className="font-bold text-indigo-300">💡 Tips Hemat Kuota Gemini Gratis:</div>
+                                        <p className="text-slate-300">
+                                            Aplikasi ini sudah diset menggunakan model <b><code>gemini-2.5-flash</code></b> yang punya batas kuota gratis harian besar di Google AI Studio. Animasi jalan-jalan 3D dihitung 100% oleh prosesor browser (Three.js), sehingga <b>tidak memakan kuota token AI</b> kecuali saat kamu benar-benar mengirim chat ke agen!
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
