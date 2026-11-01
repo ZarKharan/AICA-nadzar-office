@@ -819,6 +819,42 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
             });
             const rigsRef = useRef({});
 
+            // Nameplates are real 3D sprites parented to each avatar, not screen-space DOM.
+            // They remain attached to the character when the viewport/panel layout changes.
+            const createAgentNameplate = (agent) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 512; canvas.height = 144;
+                const ctx = canvas.getContext('2d');
+                const texture = new THREE.CanvasTexture(canvas);
+                texture.minFilter = THREE.LinearFilter;
+                const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: true, depthWrite: false, sizeAttenuation: true });
+                const sprite = new THREE.Sprite(material);
+                sprite.position.set(0, 2.15, 0);
+                sprite.scale.set(2.55, 0.72, 1);
+                sprite.userData.labelCanvas = canvas;
+                sprite.userData.labelContext = ctx;
+                sprite.userData.labelTexture = texture;
+                sprite.userData.lastLabel = '';
+                const draw = (status, name, color, gender) => {
+                    const key = `${status}|${name}|${color}|${gender}`;
+                    if (sprite.userData.lastLabel === key) return;
+                    sprite.userData.lastLabel = key;
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    const rounded = (x,y,w,h,r) => { ctx.beginPath(); ctx.roundRect(x,y,w,h,r); };
+                    rounded(8, 8, 496, 128, 28); ctx.fillStyle = 'rgba(2, 6, 23, 0.94)'; ctx.fill();
+                    ctx.strokeStyle = 'rgba(56, 189, 248, 0.72)'; ctx.lineWidth = 4; ctx.stroke();
+                    ctx.fillStyle = '#67e8f9'; ctx.font = 'bold 27px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText(String(status || '').slice(0, 34), 256, 47);
+                    ctx.beginPath(); ctx.arc(151, 91, 10, 0, Math.PI*2); ctx.fillStyle = color || '#38bdf8'; ctx.fill();
+                    ctx.fillStyle = '#f8fafc'; ctx.font = 'bold 37px Arial'; ctx.textAlign = 'left';
+                    ctx.fillText(`${String(name || '').split(' ')[0]} ${gender === 'female' ? '♀' : '♂'}`, 174, 105);
+                    texture.needsUpdate = true;
+                };
+                sprite.userData.drawLabel = draw;
+                draw('Agent', agent.name, agent.color, agent.gender);
+                return sprite;
+            };
+
             const stateRef = useRef({
                 agents,
                 sleepMode,
@@ -980,7 +1016,9 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                 rightLegPivot.add(rightLeg);
                 bodyGroup.add(rightLegPivot);
 
-                return { root, bodyGroup, headGroup, leftArmPivot, rightArmPivot, leftLegPivot, rightLegPivot };
+                const nameplate = createAgentNameplate(agent);
+                root.add(nameplate);
+                return { root, bodyGroup, headGroup, leftArmPivot, rightArmPivot, leftLegPivot, rightLegPivot, nameplate };
             };
 
             useEffect(() => {
@@ -1579,19 +1617,12 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                             built.root.rotation.y = target.ry;
                             scene.add(built.root);
 
-                            const bubbleEl = document.createElement('div');
-                            bubbleEl.className = 'agent-bubble absolute z-10 cursor-pointer';
-                            bubbleEl.onclick = () => onSelectAgent(ag.id);
-                            if (labelsRef.current) labelsRef.current.appendChild(bubbleEl);
-
                             rigs[ag.id] = {
                                 ...built,
                                 currentFloor: target.floor,
                                 waypoints: [],
                                 targetKey: `${target.floor}:${target.x.toFixed(1)},${target.z.toFixed(1)}`,
                                 walkPhase: idx * 0.9,
-                                bubbleEl,
-                                lastHtmlKey: '',
                                 autoTarget: null,
                                 nextAutoAt: elapsed + 5 + Math.random() * 12,
                                 holdUntil: 0,
@@ -1738,50 +1769,14 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
                             agentPositionsRef.current[ag.id] = { x: r.root.position.x, z: r.root.position.z, floor: r.currentFloor };
                         }
 
-                        // Project 2D Floating Name & Status Bubble (Respecting Graphics Label Mode)
-                        if (r.bubbleEl) {
+                        // 3D nameplate follows the avatar in world space and is occluded by nearer objects.
+                        if (r.nameplate) {
                             const labelMode = gfx.labelMode || 'all';
-                            const shouldShowLabel =
-                                visibleOnCurrentFloor &&
-                                labelMode !== 'none' &&
-                                (labelMode === 'all' || selId === ag.id);
-
-                            if (!shouldShowLabel) {
-                                r.bubbleEl.style.opacity = '0';
-                                r.bubbleEl.style.pointerEvents = 'none';
-                            } else {
-                                const p = r.root.position.clone();
-                                p.y += 1.68;
-                                p.project(camera);
-                                if (p.z > 1) {
-                                    r.bubbleEl.style.opacity = '0';
-                                    r.bubbleEl.style.pointerEvents = 'none';
-                                } else {
-                                    const sx = (p.x * 0.5 + 0.5) * container.clientWidth;
-                                    const sy = (-(p.y * 0.5) + 0.5) * container.clientHeight;
-                                    r.bubbleEl.style.opacity = '1';
-                                    r.bubbleEl.style.pointerEvents = 'auto';
-                                    r.bubbleEl.style.left = `${sx}px`;
-                                    r.bubbleEl.style.top = `${sy}px`;
-                                    const isWalking = r.waypoints.length > 0;
-                                    const bubbleText = isWalking ? '🚶 Jalan...' : target.bubble;
-                                    if (r.lastHtmlKey !== bubbleText) {
-                                        r.lastHtmlKey = bubbleText;
-                                        const genderBadge = ag.gender === 'female' ? '♀' : '♂';
-                                        r.bubbleEl.innerHTML = `
-                                            <div class="flex flex-col items-center group">
-                                                <div class="px-1.5 py-0.5 rounded-md text-[9px] sm:text-[10px] font-mono mb-0.5 shadow bg-slate-900/90 text-cyan-300 border border-cyan-500/30 max-w-[140px] sm:max-w-[175px] truncate">
-                                                    ${bubbleText}
-                                                </div>
-                                                <div class="px-2 py-0.5 rounded-full bg-slate-950/95 border border-slate-700 text-white text-[10px] sm:text-[11px] font-semibold flex items-center gap-1 shadow-lg group-hover:scale-105 transition">
-                                                    <span class="w-2 h-2 rounded-full" style="background:${ag.color}"></span>
-                                                    <span>${ag.name.split(' ')[0]}</span>
-                                                    <span class="text-[9px] opacity-75">${genderBadge}</span>
-                                                </div>
-                                            </div>
-                                        `;
-                                    }
-                                }
+                            const shouldShowLabel = visibleOnCurrentFloor && labelMode !== 'none' && (labelMode === 'all' || selId === ag.id);
+                            r.nameplate.visible = shouldShowLabel;
+                            if (shouldShowLabel) {
+                                const statusText = r.waypoints.length > 0 ? '🚶 Berjalan' : (target.bubble || ag.currentTask || ag.state || 'Agent');
+                                r.nameplate.userData.drawLabel(statusText, ag.name, ag.color, ag.gender);
                             }
                         }
                     });
@@ -1935,7 +1930,6 @@ Tugasmu sebagai Penanggap Utama & Perangkum Resmi (${responderAgent.name}):
             return (
                 <div className="relative w-full h-full">
                     <div ref={mountRef} className="w-full h-full" />
-                    <div ref={labelsRef} className="absolute inset-0 pointer-events-none overflow-hidden" />
                 </div>
             );
         }
